@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:atom="http://www.w3.org/2005/Atom"
+  xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Ranking dos Políticos — Podcast</title>
+    <link>PODCAST_PUBLIC_BASE_URL_PLACEHOLDER</link>
+    <description>Feed gerado automaticamente. Substitua PODCAST_PUBLIC_BASE_URL_PLACEHOLDER pela URL pública real (mesmo valor de PODCAST_PUBLIC_BASE_URL, sem barra final) ou rode main.py que atualiza links ao publicar.</description>
+    <language>pt-br</language>
+    <atom:link href="PODCAST_PUBLIC_BASE_URL_PLACEHOLDER/feed.xml" rel="self" type="application/rss+xml"/>
+    <itunes:author>Ranking dos Políticos</itunes:author>
+    <itunes:explicit>false</itunes:explicit>
+  </channel>
+</rss>
