@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install -U --pre yt-dlp
+          pip install -U --pre "yt-dlp[default]"
 
       - name: Write YouTube cookies
         env:
@@ -68,6 +68,11 @@ jobs:
               )
           print("cookies.txt: tamanho OK, domínio youtube.com e nomes de cookie esperados.")
           PY
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
 
       - name: Run publisher
         env:

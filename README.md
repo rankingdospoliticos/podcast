@@ -18,6 +18,8 @@ Em **Actions → Podcast bot → Run workflow** (branch `main`, sem inputs): o G
 
 **GitHub:** execuções agendadas podem atrasar alguns minutos no plano gratuito. O passo **Run publisher** tenta até **3 vezes** com **15 minutos** entre falhas (rede / YouTube).
 
+**YouTube / EJS:** o yt-dlp instalado via `pip` precisa do extra **`[default]`** (inclui o pacote `yt-dlp-ejs` para desafios **n** / assinatura). O workflow instala `yt-dlp[default]` e **Deno 2.x** no `PATH` (recomendado na [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS)). Sem isso podem aparecer erros do tipo *n challenge solving failed* ou *Only images are available*.
+
 Muitos vídeos novos de uma vez podem deixar o job longo ou sujeito a limites do GitHub Actions / rate limit do YouTube.
 
 ## Git: evitar históricos não relacionados
@@ -92,9 +94,11 @@ Evite exportar a partir de muitas abas normais do YouTube em paralelo — os coo
 python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-pip install -U --pre yt-dlp
+pip install -U --pre "yt-dlp[default]"
 python main.py
 ```
+
+Para o YouTube resolver desafios JavaScript localmente, instale também um runtime suportado (ex.: **Deno ≥ 2** ou Node ≥ 20 com `--js-runtimes node` no yt-dlp); ver a [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
 
 ## Credenciais
 
