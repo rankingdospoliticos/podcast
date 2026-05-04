@@ -8,8 +8,11 @@ Baixa vídeos da playlist YouTube **Feed RSS - Spotify** (URL configurada), gera
 2. **Agendado (grátis):** o workflow roda em UTC nos horários abaixo, que correspondem a:
    - **Domingo ~22:00 BRT** — `cron: 0 1 * * 1` (segunda-feira 01:00 UTC; no Brasil UTC−3 isso é domingo 22:00).
    - **Segunda-feira 12:00 BRT** — `cron: 0 15 * * 1` (segunda-feira 15:00 UTC = 12:00 BRT).
-3. **Manual:** **Actions → Podcast bot → Run workflow** a qualquer momento.
-4. O script lista a playlist, ignora o que já está no `feed.xml` (por ID do vídeo), **pula** lives, agendadas, pós-live ainda em processamento (`live_status` do yt-dlp) e vídeos com **idade inferior** a `MIN_VIDEO_AGE_SECONDS` (padrão **10800** = 3 horas desde `release_timestamp` / `timestamp` / início do dia UTC de `upload_date`). Depois processa os elegíveis (áudio, miniatura, R2, `<item>` com título, `itunes:image`, `pubDate`).
+3. O script lista a playlist, ignora o que já está no `feed.xml` (por ID do vídeo), **pula** lives, agendadas, pós-live ainda em processamento (`live_status` do yt-dlp) e vídeos com **idade inferior** a `MIN_VIDEO_AGE_SECONDS` (padrão **10800** = 3 horas desde `release_timestamp` / `timestamp` / início do dia UTC de `upload_date`). Depois processa os elegíveis (áudio, miniatura, R2, `<item>` com título, `itunes:image`, `pubDate`).
+
+### Rodar agora (manual)
+
+Em **Actions → Podcast bot → Run workflow** (branch `main`, sem inputs): o GitHub executa **o mesmo fluxo** do agendamento — cookies, secrets R2, `YOUTUBE_PLAYLIST_URL`, `python main.py`. Ou seja: **verifica na playlist o que ainda não entrou no feed**, aplica as mesmas regras (live / idade mínima) e **publica MP3 + capa + XML** para o que estiver faltando. Use quando o cron ainda não tiver corrido, tiver falhado, ou quiser forçar uma checagem imediata (sem esperar o próximo horário).
 
 **Limitação:** o atraso de 3h é calculado a partir dos metadados do vídeo no YouTube, **não** a partir do “momento em que o item entrou na playlist” (isso exigiria YouTube Data API). Na prática cobre “só depois que o VOD existe há tempo suficiente”.
 

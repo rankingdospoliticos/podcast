@@ -1,6 +1,7 @@
 name: Podcast bot
 
 on:
+  # Manual: Actions → Run workflow = mesmo job que o schedule (playlist + faltantes no feed).
   workflow_dispatch:
   schedule:
     # UTC: segunda 01:00 ≈ domingo 22:00 BRT (UTC-3)
