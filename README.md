@@ -1,6 +1,14 @@
 # Podcast Ranking — automação (R2 + GitHub Actions)
 
-Baixa a fonte de áudio (ex.: live gravada), envia para o Cloudflare R2 (API S3), atualiza o RSS e opcionalmente faz commit do `feed.xml` no repositório.
+Baixa vídeos da playlist YouTube **Feed RSS - Spotify** (URL configurada), gera MP3 + capa, envia ao Cloudflare R2 e atualiza o RSS. Opcionalmente o workflow faz commit do `feed.xml` no repositório.
+
+## Regra de automação
+
+1. Novos vídeos entram na playlist **Feed RSS - Spotify** no YouTube (mantenha a ordem da playlist como quiser que apareça no processamento: o script usa `playlist_index` crescente).
+2. Alguém dispara **Actions → Podcast bot → Run workflow** (sem colar URL de vídeo).
+3. O script lista a playlist, ignora o que já está no `feed.xml` (por ID do vídeo) e **processa todos os faltantes** numa única execução (áudio, miniatura, uploads R2, `<item>` com título da live, `itunes:image` e `pubDate` a partir dos metadados do YouTube).
+
+Muitos vídeos novos de uma vez podem deixar o job longo ou sujeito a limites do GitHub Actions / rate limit do YouTube.
 
 ## Git: evitar históricos não relacionados
 
@@ -32,7 +40,7 @@ Confira no GitHub se a branch padrão é `main` ou `master` e ajuste o nome nos 
 
 ## Secrets do repositório (Settings → Secrets → Actions)
 
-Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá), alinhados ao que você já usa no servidor:
+Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá):
 
 | Secret | Descrição |
 |--------|-----------|
@@ -41,15 +49,14 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `R2_SECRET_KEY` | Secret do token R2. |
 | `R2_BUCKET_NAME` | Nome do bucket R2. |
 | `R2_PUBLIC_URL` | URL pública estável do feed/arquivos (prefixo de `feed.xml` e de `episodes/…`), **sem barra no final**. |
+| `YOUTUBE_PLAYLIST_URL` | URL da playlist (ex.: `https://www.youtube.com/playlist?list=PL…`) da **Feed RSS - Spotify**. No YouTube: Biblioteca → playlist → partilhar → copiar link. |
 | `YOUTUBE_COOKIES` | Conteúdo completo de um `cookies.txt` no formato Netscape (exportado com o yt-dlp); o workflow grava `cookies.txt` antes de rodar o script. |
-
-O link do YouTube **não** é secret: em **Actions → Podcast bot → Run workflow** preencha o campo obrigatório **youtube_url**; o workflow repassa para o `main.py` como `YOUTUBE_URL`.
 
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
 
 ## Variáveis de ambiente (local)
 
-Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 que o workflow injeta. Para o YouTube sem bloqueio de bot, coloque um `cookies.txt` (Netscape) na raiz do repositório ou defina `YOUTUBE_COOKIES_PATH` com o caminho absoluto do arquivo.
+Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 e `YOUTUBE_PLAYLIST_URL` que o workflow injeta. Para o YouTube sem bloqueio de bot, coloque um `cookies.txt` (Netscape) na raiz do repositório ou defina `YOUTUBE_COOKIES_PATH` com o caminho absoluto do arquivo.
 
 ## Rodar localmente
 
@@ -57,6 +64,7 @@ Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2
 python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
+pip install -U --pre yt-dlp
 python main.py
 ```
 

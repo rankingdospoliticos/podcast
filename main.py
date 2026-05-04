@@ -1,9 +1,8 @@
 """
-Baixa áudio (yt-dlp), miniatura e metadados do YouTube, envia para R2, atualiza feed.xml.
+Lê a playlist YouTube (secret YOUTUBE_PLAYLIST_URL), processa vídeos ainda não
+presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza o RSS.
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
-Fonte do vídeo: variável de ambiente YOUTUBE_URL (no Actions vem do workflow_dispatch).
-Cookies opcionais: arquivo cookies.txt na raiz do projeto (gerado no CI a partir do secret YOUTUBE_COOKIES)
-ou caminho em YOUTUBE_COOKIES_PATH; repassado ao yt-dlp como --cookies.
+Cookies: cookies.txt na raiz ou YOUTUBE_COOKIES_PATH; no CI vem do secret YOUTUBE_COOKIES.
 """
 from __future__ import annotations
 
@@ -117,6 +116,33 @@ def format_pub_date() -> str:
     return datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 
+def pub_date_from_video_info(info: dict) -> str:
+    """RFC 822 / RSS pubDate em GMT a partir dos metadados do vídeo."""
+    ts = info.get("release_timestamp") or info.get("timestamp")
+    if ts is not None:
+        try:
+            dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+            return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        except (OSError, ValueError, OverflowError):
+            pass
+    ud = info.get("upload_date")
+    if isinstance(ud, str) and len(ud) == 8 and ud.isdigit():
+        try:
+            dt = datetime(
+                int(ud[:4]),
+                int(ud[4:6]),
+                int(ud[6:8]),
+                12,
+                0,
+                0,
+                tzinfo=timezone.utc,
+            )
+            return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
+        except ValueError:
+            pass
+    return format_pub_date()
+
+
 def _cookies_cli() -> list[str]:
     """Netscape cookies para o YouTube (--cookies), se o arquivo existir."""
     raw = os.environ.get("YOUTUBE_COOKIES_PATH", "").strip()
@@ -129,18 +155,44 @@ def _cookies_cli() -> list[str]:
     return []
 
 
-def _yt_dlp_base_cmd() -> list[str]:
+def _yt_dlp_common() -> list[str]:
+    """Prefixo yt-dlp + cookies + extractor-args (sem --no-playlist: necessário para listar playlist)."""
     return [
         "yt-dlp",
         *_cookies_cli(),
-        "--no-playlist",
         "--extractor-args",
         YT_EXTRACTOR_ARGS,
     ]
 
 
+def _yt_dlp_single_video_cmd() -> list[str]:
+    """Comando base para um único vídeo."""
+    return _yt_dlp_common() + ["--no-playlist"]
+
+
+def fetch_playlist_entries(playlist_url: str) -> list[dict]:
+    """Entradas da playlist (--flat-playlist), ordenadas por playlist_index crescente."""
+    cmd = _yt_dlp_common() + ["--flat-playlist", "--dump-single-json", playlist_url]
+    proc = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+    data = json.loads(proc.stdout)
+    raw = [e for e in (data.get("entries") or []) if isinstance(e, dict) and e.get("id")]
+
+    def playlist_index_key(e: dict) -> int:
+        i = e.get("playlist_index")
+        if isinstance(i, int):
+            return i
+        return 999_999_999
+
+    raw.sort(key=playlist_index_key)
+    return raw
+
+
+def playlist_watch_urls(entries: list[dict]) -> list[str]:
+    return [f"https://www.youtube.com/watch?v={e['id']}" for e in entries]
+
+
 def fetch_youtube_metadata(source_url: str) -> dict:
-    cmd = _yt_dlp_base_cmd() + ["--dump-single-json", source_url]
+    cmd = _yt_dlp_single_video_cmd() + ["--dump-single-json", source_url]
     proc = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(proc.stdout)
 
@@ -241,7 +293,7 @@ def _guess_image_format(url: str, content_type: str, head: bytes) -> tuple[str, 
 
 def download_audio(source_url: str, work: Path) -> tuple[Path, str]:
     pattern = str(work / "%(id)s.%(ext)s")
-    cmd = _yt_dlp_base_cmd() + [
+    cmd = _yt_dlp_single_video_cmd() + [
         "-f",
         "ba/b",
         "-x",
@@ -276,6 +328,7 @@ def append_item(
     enclosure_url: str,
     length_bytes: int,
     itunes_image_href: str,
+    pub_date: str | None = None,
 ) -> None:
     item = ET.SubElement(channel, "item")
     t = ET.SubElement(item, "title")
@@ -284,7 +337,7 @@ def append_item(
     g = ET.SubElement(item, "guid", {"isPermaLink": "false"})
     g.text = guid
     pd = ET.SubElement(item, "pubDate")
-    pd.text = format_pub_date()
+    pd.text = pub_date if pub_date else format_pub_date()
     ET.SubElement(
         item,
         "enclosure",
@@ -313,31 +366,21 @@ def upload_feed_to_r2(client, bucket: str) -> None:
     )
 
 
-def main() -> None:
-    load_dotenv_file()
-    bucket = require_env("R2_BUCKET_NAME")
-    base = require_env("R2_PUBLIC_URL").rstrip("/")
-    source = require_env("YOUTUBE_URL")
-    guid = stable_guid(source)
-
-    tree, channel = parse_feed()
-    sync_public_urls(channel, base)
-
-    if guid in existing_guids(channel):
-        print(f"Episódio já existe no feed (guid={guid}). Sincronizando feed no R2.")
-        write_feed(tree)
-        client = r2_client()
-        upload_feed_to_r2(client, bucket)
-        return
-
-    info = fetch_youtube_metadata(source)
+def process_one_episode(
+    source_url: str,
+    channel: ET.Element,
+    client,
+    bucket: str,
+    base: str,
+) -> None:
+    guid = stable_guid(source_url)
+    info = fetch_youtube_metadata(source_url)
     episode_title = (info.get("fulltitle") or info.get("title") or "").strip() or f"Episódio {guid}"
+    pub_date = pub_date_from_video_info(info)
     thumb_urls = ordered_thumbnail_urls(info)
     if not thumb_urls:
         print("Metadados do YouTube não incluem miniatura; o feed exige itunes:image.", file=sys.stderr)
         sys.exit(1)
-
-    client = r2_client()
 
     with tempfile.TemporaryDirectory() as td:
         work = Path(td)
@@ -362,10 +405,45 @@ def main() -> None:
         enclosure_url=public_audio,
         length_bytes=size,
         itunes_image_href=public_thumb,
+        pub_date=pub_date,
     )
+    print(f"Publicado: {public_audio} (capa: {public_thumb})")
+
+
+def main() -> None:
+    load_dotenv_file()
+    bucket = require_env("R2_BUCKET_NAME")
+    base = require_env("R2_PUBLIC_URL").rstrip("/")
+    playlist_url = require_env("YOUTUBE_PLAYLIST_URL")
+
+    tree, channel = parse_feed()
+    sync_public_urls(channel, base)
+    guids_done = existing_guids(channel)
+
+    entries = fetch_playlist_entries(playlist_url)
+    urls = playlist_watch_urls(entries)
+    if not urls:
+        print("Playlist vazia ou sem entradas válidas; sincronizando feed no R2.")
+        write_feed(tree)
+        upload_feed_to_r2(r2_client(), bucket)
+        return
+
+    client = r2_client()
+    new_count = 0
+    for url in urls:
+        guid = stable_guid(url)
+        if guid in guids_done:
+            continue
+        process_one_episode(url, channel, client, bucket, base)
+        guids_done.add(guid)
+        new_count += 1
+
     write_feed(tree)
     upload_feed_to_r2(client, bucket)
-    print(f"Publicado: {public_audio} (capa: {public_thumb})")
+    if new_count == 0:
+        print("Nenhum vídeo novo na playlist em relação ao feed; feed sincronizado no R2.")
+    else:
+        print(f"Concluído: {new_count} episódio(s) novo(s) adicionados ao feed.")
 
 
 if __name__ == "__main__":

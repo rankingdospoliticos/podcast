@@ -2,11 +2,6 @@ name: Podcast bot
 
 on:
   workflow_dispatch:
-    inputs:
-      youtube_url:
-        description: "URL do vídeo no YouTube (cole o link completo)"
-        required: true
-        type: string
 
 permissions:
   contents: write
@@ -57,7 +52,7 @@ jobs:
           R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
-          YOUTUBE_URL: ${{ inputs.youtube_url }}
+          YOUTUBE_PLAYLIST_URL: ${{ secrets.YOUTUBE_PLAYLIST_URL }}
         run: python main.py
 
       - name: Commit feed.xml if changed
