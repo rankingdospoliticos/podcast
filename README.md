@@ -65,7 +65,7 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `YOUTUBE_COOKIES` | Conteúdo completo de um `cookies.txt` no formato Netscape (exportado com o yt-dlp); o workflow grava `cookies.txt` antes de rodar o script. |
 | `MIN_VIDEO_AGE_SECONDS` | (Opcional) Segundos mínimos após a data de publicação conhecida antes de processar; padrão no código é **10800** (3h) se o secret estiver vazio. |
 
-**Variáveis de ambiente do runner (opcional):** em *Actions → Variables* pode definir-se `YTDLP_EXTRACTOR_ARGS` com o valor completo para `--extractor-args` do yt-dlp (só para cenários avançados). Por defeito o script **não** força `player_client`: com cookies, o yt-dlp usa clientes compatíveis (forçar `android` costuma falhar com “does not support cookies”).
+**Variáveis de ambiente do runner (opcional):** em *Actions → Variables*, `YTDLP_EXTRACTOR_ARGS` substitui o `--extractor-args` por completo. Se **não** definir: com cookies o script usa **`youtube:player_client=web`** (cliente que aceita cookies no yt-dlp). IPs de datacenter (GitHub) podem ainda devolver *Sign in to confirm you're not a bot* — veja [PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) e o [export de cookies](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies).
 
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
 
@@ -73,7 +73,7 @@ Opcional para commit automático do feed no repo (já habilitado no workflow): n
 
 Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 e `YOUTUBE_PLAYLIST_URL` que o workflow injeta. Para o YouTube sem bloqueio de bot, coloque um `cookies.txt` (Netscape) na raiz do repositório ou defina `YOUTUBE_COOKIES_PATH` com o caminho absoluto do arquivo.
 
-- **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env` local, o script passa `--extractor-args` com esse texto (ex.: `youtube:player_client=web` só se souber o que precisa). Sem esta variável, não se força cliente YouTube.
+- **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env`, substitui o `--extractor-args` do yt-dlp. Se **omitida** e existir `cookies.txt` / `YOUTUBE_COOKIES_PATH`, o script usa `youtube:player_client=web` por defeito.
 
 ### Exportar cookies para o CI (recomendado)
 
@@ -87,6 +87,8 @@ Seguindo a [wiki do yt-dlp — Exporting YouTube cookies](https://github.com/yt-
 6. Cole o ficheiro completo no secret **`YOUTUBE_COOKIES`** (o workflow valida tamanho, domínio e presença de nomes típicos de cookie, **sem** imprimir o conteúdo nos logs).
 
 Evite exportar a partir de muitas abas normais do YouTube em paralelo — os cookies podem rodar e invalidar o ficheiro rapidamente.
+
+Se no GitHub Actions aparecer **Sign in to confirm you're not a bot** mesmo com cookies recentes, o IP do runner pode ser o factor: além de renovar o secret, consulte a [wiki PO Token](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) do yt-dlp ou um runner com IP menos “marcado”.
 
 ## Rodar localmente
 

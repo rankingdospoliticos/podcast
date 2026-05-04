@@ -4,9 +4,8 @@ presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza
 Ignora lives/agendadas e VOD com idade inferior a MIN_VIDEO_AGE_SECONDS (padrão 3h).
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Cookies: cookies.txt na raiz ou YOUTUBE_COOKIES_PATH; no CI vem do secret YOUTUBE_COOKIES.
-Por defeito não se passa --extractor-args ao YouTube (o yt-dlp escolhe clientes compatíveis
-com cookies; forçar android quebra: "Skipping client android since it does not support cookies").
-Opcional: YTDLP_EXTRACTOR_ARGS para --extractor-args manual (avançado).
+Com cookies, usa-se por defeito youtube:player_client=web (compatível com cookies; android não).
+YTDLP_EXTRACTOR_ARGS substitui esse default (avançado).
 """
 from __future__ import annotations
 
@@ -241,10 +240,12 @@ def _cookies_cli() -> list[str]:
 
 
 def _yt_extractor_args_cli() -> list[str]:
-    """Só adiciona --extractor-args se YTDLP_EXTRACTOR_ARGS estiver definido (evita android+cookies)."""
+    """YTDLP_EXTRACTOR_ARGS tem prioridade; com ficheiro de cookies usa web (suporta cookies; evita android)."""
     override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if override:
         return ["--extractor-args", override]
+    if _cookies_cli():
+        return ["--extractor-args", "youtube:player_client=web"]
     return []
 
 
@@ -295,7 +296,7 @@ def run_yt_dlp(cmd: list[str], *, capture_json: bool) -> subprocess.CompletedPro
 
 
 def _yt_dlp_common() -> list[str]:
-    """Prefixo yt-dlp + rede + cookies (+ extractor-args só se YTDLP_EXTRACTOR_ARGS). Sem --no-playlist."""
+    """Prefixo yt-dlp + rede + cookies + extractor-args (web quando há cookies, salvo override). Sem --no-playlist."""
     return [
         "yt-dlp",
         "--force-ipv4",
