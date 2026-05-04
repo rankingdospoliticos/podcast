@@ -2,6 +2,11 @@ name: Podcast bot
 
 on:
   workflow_dispatch:
+  schedule:
+    # UTC: segunda 01:00 ≈ domingo 22:00 BRT (UTC-3)
+    - cron: "0 1 * * 1"
+    # UTC: segunda 15:00 = segunda 12:00 BRT
+    - cron: "0 15 * * 1"
 
 permissions:
   contents: write
@@ -53,7 +58,19 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           YOUTUBE_PLAYLIST_URL: ${{ secrets.YOUTUBE_PLAYLIST_URL }}
-        run: python main.py
+          MIN_VIDEO_AGE_SECONDS: ${{ secrets.MIN_VIDEO_AGE_SECONDS }}
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== Tentativa ${attempt} de 3 ==="
+            if python main.py; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Falhou; aguardando 15 min antes da próxima tentativa..."
+              sleep 900
+            fi
+          done
+          exit 1
 
       - name: Commit feed.xml if changed
         run: |

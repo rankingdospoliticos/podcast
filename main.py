@@ -1,6 +1,7 @@
 """
 Lê a playlist YouTube (secret YOUTUBE_PLAYLIST_URL), processa vídeos ainda não
 presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza o RSS.
+Ignora lives/agendadas e VOD com idade inferior a MIN_VIDEO_AGE_SECONDS (padrão 3h).
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Cookies: cookies.txt na raiz ou YOUTUBE_COOKIES_PATH; no CI vem do secret YOUTUBE_COOKIES.
 """
@@ -10,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import subprocess
 import sys
 import tempfile
@@ -27,6 +29,15 @@ ENV_FILE = ROOT / ".env"
 
 YT_EXTRACTOR_ARGS = "youtube:client=ios,tv,web"
 ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
+DEFAULT_MIN_VIDEO_AGE_SECONDS = 10800  # 3 horas
+# live_status do yt-dlp: ainda não é VOD estável para o feed
+SKIP_LIVE_STATUSES = frozenset(
+    {
+        "is_live",
+        "is_upcoming",
+        "is_post_live",
+    }
+)
 
 
 def load_dotenv_file() -> None:
@@ -195,6 +206,71 @@ def fetch_youtube_metadata(source_url: str) -> dict:
     cmd = _yt_dlp_single_video_cmd() + ["--dump-single-json", source_url]
     proc = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(proc.stdout)
+
+
+def min_video_age_seconds() -> int:
+    raw = os.environ.get("MIN_VIDEO_AGE_SECONDS", "").strip()
+    if not raw:
+        return DEFAULT_MIN_VIDEO_AGE_SECONDS
+    try:
+        n = int(raw)
+        return max(0, n)
+    except ValueError:
+        return DEFAULT_MIN_VIDEO_AGE_SECONDS
+
+
+def earliest_publish_unix(info: dict) -> int | None:
+    """Instante Unix (UTC) mais cedo confiável para 'quando o conteúdo existiu'."""
+    for key in ("release_timestamp", "timestamp"):
+        ts = info.get(key)
+        if ts is not None:
+            try:
+                return int(ts)
+            except (TypeError, ValueError, OverflowError):
+                pass
+    ud = info.get("upload_date")
+    if isinstance(ud, str) and len(ud) == 8 and ud.isdigit():
+        try:
+            dt = datetime(
+                int(ud[:4]),
+                int(ud[4:6]),
+                int(ud[6:8]),
+                0,
+                0,
+                0,
+                tzinfo=timezone.utc,
+            )
+            return int(dt.timestamp())
+        except ValueError:
+            pass
+    return None
+
+
+def should_skip_video(info: dict) -> tuple[bool, str]:
+    """
+    Não processar live/agendada nem VOD com idade inferior ao mínimo (pós-live).
+    """
+    if info.get("is_live") is True:
+        return True, "transmissão ao vivo (is_live)"
+
+    ls = info.get("live_status")
+    if isinstance(ls, str) and ls in SKIP_LIVE_STATUSES:
+        return True, f"live_status={ls}"
+
+    av = info.get("availability")
+    if av == "private":
+        return True, "availability=private"
+
+    min_age = min_video_age_seconds()
+    earliest = earliest_publish_unix(info)
+    if earliest is None:
+        return True, "sem release_timestamp/timestamp/upload_date para calcular idade mínima"
+
+    age = time.time() - earliest
+    if age < min_age:
+        return True, f"aguardando idade mínima ({min_age}s; faltam ~{int(min_age - age)}s)"
+
+    return False, ""
 
 
 def ordered_thumbnail_urls(info: dict) -> list[str]:
@@ -372,9 +448,12 @@ def process_one_episode(
     client,
     bucket: str,
     base: str,
+    *,
+    info: dict | None = None,
 ) -> None:
     guid = stable_guid(source_url)
-    info = fetch_youtube_metadata(source_url)
+    if info is None:
+        info = fetch_youtube_metadata(source_url)
     episode_title = (info.get("fulltitle") or info.get("title") or "").strip() or f"Episódio {guid}"
     pub_date = pub_date_from_video_info(info)
     thumb_urls = ordered_thumbnail_urls(info)
@@ -387,7 +466,7 @@ def process_one_episode(
         thumb_bytes, thumb_ext, thumb_ct = download_thumbnail_bytes(thumb_urls)
         thumb_path = work / f"thumb.{thumb_ext}"
         thumb_path.write_bytes(thumb_bytes)
-        audio_path, _stem = download_audio(source, work)
+        audio_path, _stem = download_audio(source_url, work)
         size = audio_path.stat().st_size
         ext = audio_path.suffix.lower().lstrip(".") or "mp3"
         audio_key = f"episodes/{guid}.{ext}"
@@ -430,20 +509,36 @@ def main() -> None:
 
     client = r2_client()
     new_count = 0
+    skipped = 0
     for url in urls:
         guid = stable_guid(url)
         if guid in guids_done:
             continue
-        process_one_episode(url, channel, client, bucket, base)
+        try:
+            info = fetch_youtube_metadata(url)
+        except subprocess.CalledProcessError as e:
+            print(f"Erro ao obter metadados de {url}: {e}", file=sys.stderr)
+            raise
+        skip, reason = should_skip_video(info)
+        if skip:
+            print(f"Pulando {guid}: {reason}")
+            skipped += 1
+            continue
+        process_one_episode(url, channel, client, bucket, base, info=info)
         guids_done.add(guid)
         new_count += 1
 
     write_feed(tree)
     upload_feed_to_r2(client, bucket)
     if new_count == 0:
-        print("Nenhum vídeo novo na playlist em relação ao feed; feed sincronizado no R2.")
+        msg = "Nenhum episódio novo publicado nesta execução; feed sincronizado no R2."
+        if skipped:
+            msg += f" ({skipped} vídeo(s) ignorados: live, idade < mínimo ou sem data.)"
+        print(msg)
     else:
         print(f"Concluído: {new_count} episódio(s) novo(s) adicionados ao feed.")
+        if skipped:
+            print(f"({skipped} vídeo(s) ainda não elegíveis nesta execução.)")
 
 
 if __name__ == "__main__":

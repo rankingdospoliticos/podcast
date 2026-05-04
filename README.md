@@ -5,8 +5,15 @@ Baixa vídeos da playlist YouTube **Feed RSS - Spotify** (URL configurada), gera
 ## Regra de automação
 
 1. Novos vídeos entram na playlist **Feed RSS - Spotify** no YouTube (mantenha a ordem da playlist como quiser que apareça no processamento: o script usa `playlist_index` crescente).
-2. Alguém dispara **Actions → Podcast bot → Run workflow** (sem colar URL de vídeo).
-3. O script lista a playlist, ignora o que já está no `feed.xml` (por ID do vídeo) e **processa todos os faltantes** numa única execução (áudio, miniatura, uploads R2, `<item>` com título da live, `itunes:image` e `pubDate` a partir dos metadados do YouTube).
+2. **Agendado (grátis):** o workflow roda em UTC nos horários abaixo, que correspondem a:
+   - **Domingo ~22:00 BRT** — `cron: 0 1 * * 1` (segunda-feira 01:00 UTC; no Brasil UTC−3 isso é domingo 22:00).
+   - **Segunda-feira 12:00 BRT** — `cron: 0 15 * * 1` (segunda-feira 15:00 UTC = 12:00 BRT).
+3. **Manual:** **Actions → Podcast bot → Run workflow** a qualquer momento.
+4. O script lista a playlist, ignora o que já está no `feed.xml` (por ID do vídeo), **pula** lives, agendadas, pós-live ainda em processamento (`live_status` do yt-dlp) e vídeos com **idade inferior** a `MIN_VIDEO_AGE_SECONDS` (padrão **10800** = 3 horas desde `release_timestamp` / `timestamp` / início do dia UTC de `upload_date`). Depois processa os elegíveis (áudio, miniatura, R2, `<item>` com título, `itunes:image`, `pubDate`).
+
+**Limitação:** o atraso de 3h é calculado a partir dos metadados do vídeo no YouTube, **não** a partir do “momento em que o item entrou na playlist” (isso exigiria YouTube Data API). Na prática cobre “só depois que o VOD existe há tempo suficiente”.
+
+**GitHub:** execuções agendadas podem atrasar alguns minutos no plano gratuito. O passo **Run publisher** tenta até **3 vezes** com **15 minutos** entre falhas (rede / YouTube).
 
 Muitos vídeos novos de uma vez podem deixar o job longo ou sujeito a limites do GitHub Actions / rate limit do YouTube.
 
@@ -51,6 +58,7 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `R2_PUBLIC_URL` | URL pública estável do feed/arquivos (prefixo de `feed.xml` e de `episodes/…`), **sem barra no final**. |
 | `YOUTUBE_PLAYLIST_URL` | URL da playlist (ex.: `https://www.youtube.com/playlist?list=PL…`) da **Feed RSS - Spotify**. No YouTube: Biblioteca → playlist → partilhar → copiar link. |
 | `YOUTUBE_COOKIES` | Conteúdo completo de um `cookies.txt` no formato Netscape (exportado com o yt-dlp); o workflow grava `cookies.txt` antes de rodar o script. |
+| `MIN_VIDEO_AGE_SECONDS` | (Opcional) Segundos mínimos após a data de publicação conhecida antes de processar; padrão no código é **10800** (3h) se o secret estiver vazio. |
 
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
 
