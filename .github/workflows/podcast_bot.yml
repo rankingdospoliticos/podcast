@@ -29,7 +29,9 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt -U yt-dlp
+        run: |
+          pip install -r requirements.txt
+          pip install -U --pre yt-dlp
 
       - name: Run publisher
         env:

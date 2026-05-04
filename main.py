@@ -1,11 +1,12 @@
 """
-Baixa áudio (yt-dlp), envia para R2, atualiza feed.xml sem duplicar <item> pelo mesmo guid.
+Baixa áudio (yt-dlp), miniatura e metadados do YouTube, envia para R2, atualiza feed.xml.
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Fonte do vídeo: variável de ambiente YOUTUBE_URL (no Actions vem do workflow_dispatch).
 """
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -16,11 +17,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import boto3
+import requests
 from botocore.config import Config
 
 ROOT = Path(__file__).resolve().parent
 FEED_PATH = ROOT / "feed.xml"
 ENV_FILE = ROOT / ".env"
+
+YT_EXTRACTOR_ARGS = "youtube:client=ios,tv,web"
+ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
 
 
 def load_dotenv_file() -> None:
@@ -110,30 +115,125 @@ def format_pub_date() -> str:
     return datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 
+def _yt_dlp_base_cmd() -> list[str]:
+    return [
+        "yt-dlp",
+        "--no-playlist",
+        "--extractor-args",
+        YT_EXTRACTOR_ARGS,
+    ]
+
+
+def fetch_youtube_metadata(source_url: str) -> dict:
+    cmd = _yt_dlp_base_cmd() + ["--dump-single-json", source_url]
+    proc = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+    return json.loads(proc.stdout)
+
+
+def ordered_thumbnail_urls(info: dict) -> list[str]:
+    """URLs da melhor para piores miniaturas (deduplicadas)."""
+    thumbs = list(info.get("thumbnails") or [])
+
+    def area(t: dict) -> int:
+        return (t.get("width") or 0) * (t.get("height") or 0)
+
+    thumbs.sort(key=area, reverse=True)
+    ordered: list[str] = []
+    seen: set[str] = set()
+    top = info.get("thumbnail")
+    if isinstance(top, str) and top.startswith("http") and top not in seen:
+        ordered.append(top)
+        seen.add(top)
+    for t in thumbs:
+        u = t.get("url")
+        if isinstance(u, str) and u.startswith("http") and u not in seen:
+            ordered.append(u)
+            seen.add(u)
+    return ordered
+
+
+def download_thumbnail_bytes(urls: list[str]) -> tuple[bytes, str, str]:
+    """
+    Baixa a miniatura. Retorna (corpo, extensão sem ponto, content-type S3).
+    Falha se nenhuma URL funcionar.
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    }
+    last_err: str | None = None
+    for url in urls:
+        try:
+            r = requests.get(url, headers=headers, timeout=120)
+            r.raise_for_status()
+            data = r.content
+            if len(data) < 256:
+                last_err = "resposta muito pequena"
+                continue
+            ctype = (r.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            ext, s3_ct = _guess_image_format(url, ctype, data[:12])
+            return data, ext, s3_ct
+        except OSError as e:
+            last_err = str(e)
+        except requests.RequestException as e:
+            last_err = str(e)
+    print(
+        f"Não foi possível baixar miniatura do YouTube ({last_err}). "
+        "O feed exige itunes:image; abortando.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+
+def _guess_image_format(url: str, content_type: str, head: bytes) -> tuple[str, str]:
+    if "jpeg" in content_type or "jpg" in content_type:
+        return "jpg", "image/jpeg"
+    if "png" in content_type:
+        return "png", "image/png"
+    if "webp" in content_type:
+        return "webp", "image/webp"
+    if "gif" in content_type:
+        return "gif", "image/gif"
+    u = url.lower()
+    if ".jpg" in u or ".jpeg" in u:
+        return "jpg", "image/jpeg"
+    if ".png" in u:
+        return "png", "image/png"
+    if ".webp" in u:
+        return "webp", "image/webp"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpg", "image/jpeg"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png", "image/png"
+    if head.startswith(b"RIFF") and b"WEBP" in head[:12]:
+        return "webp", "image/webp"
+    return "jpg", "image/jpeg"
+
+
 def download_audio(source_url: str, work: Path) -> tuple[Path, str]:
     pattern = str(work / "%(id)s.%(ext)s")
-    subprocess.run(
-        [
-            "yt-dlp",
-            "-f",
-            "ba/b",
-            "-x",
-            "--audio-format",
-            "mp3",
-            "--no-playlist",
-            "--extractor-args",
-            "youtube:client=android",
-            "-o",
-            pattern,
-            source_url,
-        ],
-        check=True,
-    )
-    files = [p for p in work.iterdir() if p.is_file()]
-    if len(files) != 1:
-        print(f"Esperado 1 arquivo após yt-dlp, encontrados: {files}", file=sys.stderr)
+    cmd = _yt_dlp_base_cmd() + [
+        "-f",
+        "ba/b",
+        "-x",
+        "--audio-format",
+        "mp3",
+        "-o",
+        pattern,
+        source_url,
+    ]
+    subprocess.run(cmd, check=True)
+    audio_files = [
+        p
+        for p in work.iterdir()
+        if p.is_file() and p.suffix.lower() in {".mp3", ".m4a", ".opus", ".webm", ".ogg"}
+    ]
+    if len(audio_files) != 1:
+        print(f"Esperado 1 arquivo de áudio após yt-dlp, encontrados: {audio_files}", file=sys.stderr)
         sys.exit(1)
-    audio = files[0]
+    audio = audio_files[0]
     return audio, audio.stem
 
 
@@ -148,10 +248,12 @@ def append_item(
     title: str,
     enclosure_url: str,
     length_bytes: int,
+    itunes_image_href: str,
 ) -> None:
     item = ET.SubElement(channel, "item")
     t = ET.SubElement(item, "title")
     t.text = title
+    ET.SubElement(item, f"{{{ITUNES_NS}}}image", {"href": itunes_image_href})
     g = ET.SubElement(item, "guid", {"isPermaLink": "false"})
     g.text = guid
     pd = ET.SubElement(item, "pubDate")
@@ -169,7 +271,7 @@ def append_item(
 
 def write_feed(tree: ET.ElementTree) -> None:
     ET.register_namespace("atom", "http://www.w3.org/2005/Atom")
-    ET.register_namespace("itunes", "http://www.itunes.com/dtds/podcast-1.0.dtd")
+    ET.register_namespace("itunes", ITUNES_NS)
     ET.indent(tree, space="  ")
     tree.write(FEED_PATH, encoding="utf-8", xml_declaration=True)
 
@@ -201,29 +303,42 @@ def main() -> None:
         upload_feed_to_r2(client, bucket)
         return
 
+    info = fetch_youtube_metadata(source)
+    episode_title = (info.get("fulltitle") or info.get("title") or "").strip() or f"Episódio {guid}"
+    thumb_urls = ordered_thumbnail_urls(info)
+    if not thumb_urls:
+        print("Metadados do YouTube não incluem miniatura; o feed exige itunes:image.", file=sys.stderr)
+        sys.exit(1)
+
     client = r2_client()
 
     with tempfile.TemporaryDirectory() as td:
         work = Path(td)
-        audio_path, stem = download_audio(source, work)
+        thumb_bytes, thumb_ext, thumb_ct = download_thumbnail_bytes(thumb_urls)
+        thumb_path = work / f"thumb.{thumb_ext}"
+        thumb_path.write_bytes(thumb_bytes)
+        audio_path, _stem = download_audio(source, work)
         size = audio_path.stat().st_size
         ext = audio_path.suffix.lower().lstrip(".") or "mp3"
-        object_key = f"episodes/{guid}.{ext}"
-        ctype = "audio/mpeg" if ext == "mp3" else "application/octet-stream"
-        upload_file(client, bucket, object_key, audio_path, ctype)
+        audio_key = f"episodes/{guid}.{ext}"
+        thumb_key = f"episodes/{guid}-thumb.{thumb_ext}"
+        a_ct = "audio/mpeg" if ext == "mp3" else "application/octet-stream"
+        upload_file(client, bucket, audio_key, audio_path, a_ct)
+        upload_file(client, bucket, thumb_key, thumb_path, thumb_ct)
 
-    public_audio = f"{base}/{object_key}"
-    title = f"Episódio {stem}"
+    public_audio = f"{base}/{audio_key}"
+    public_thumb = f"{base}/{thumb_key}"
     append_item(
         channel,
         guid=guid,
-        title=title,
+        title=episode_title,
         enclosure_url=public_audio,
         length_bytes=size,
+        itunes_image_href=public_thumb,
     )
     write_feed(tree)
     upload_feed_to_r2(client, bucket)
-    print(f"Publicado: {public_audio}")
+    print(f"Publicado: {public_audio} (capa: {public_thumb})")
 
 
 if __name__ == "__main__":
