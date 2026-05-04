@@ -121,6 +121,8 @@ def download_audio(source_url: str, work: Path) -> tuple[Path, str]:
             "--audio-format",
             "mp3",
             "--no-playlist",
+            "--extractor-args",
+            "youtube:client=android",
             "-o",
             pattern,
             source_url,
