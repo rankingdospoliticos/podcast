@@ -4,7 +4,7 @@ presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza
 Ignora lives/agendadas e VOD com idade inferior a MIN_VIDEO_AGE_SECONDS (padrão 3h).
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Cookies: cookies.txt na raiz ou YOUTUBE_COOKIES_PATH; no CI vem do secret YOUTUBE_COOKIES.
-Com cookies, usa-se por defeito youtube:player_client=web (compatível com cookies; android não).
+Com cookies, usa-se por defeito youtube:player_client=web (compatível com cookies).
 YTDLP_EXTRACTOR_ARGS substitui esse default (avançado).
 """
 from __future__ import annotations
@@ -240,7 +240,7 @@ def _cookies_cli() -> list[str]:
 
 
 def _yt_extractor_args_cli() -> list[str]:
-    """YTDLP_EXTRACTOR_ARGS tem prioridade; com ficheiro de cookies usa web (suporta cookies; evita android)."""
+    """YTDLP_EXTRACTOR_ARGS tem prioridade; com ficheiro de cookies usa web (suporta cookies)."""
     override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if override:
         return ["--extractor-args", override]

@@ -23,6 +23,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Cloudflare WARP
+        uses: fscarmen/warp-on-actions@v1.4
+        with:
+          stack: ipv4
+          mode: client
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
