@@ -39,6 +39,14 @@ SKIP_LIVE_STATUSES = frozenset(
     }
 )
 
+# Metadados oficiais do programa (Spotify / iTunes)
+SHOW_TITLE = "Ranking Podcast"
+SHOW_DESCRIPTION = "Podcast oficial do Ranking dos Políticos."
+SHOW_AUTHOR = "Ranking dos Políticos"
+OWNER_NAME = "Ranking dos Políticos"
+OWNER_EMAIL = "comunicacao@politicos.org.br"
+ITUNES_CATEGORY = "Government"
+
 
 def load_dotenv_file() -> None:
     if not ENV_FILE.exists():
@@ -61,11 +69,42 @@ def require_env(name: str) -> str:
     return v
 
 
-def stable_guid(source_url: str) -> str:
+def youtube_video_id(source_url: str) -> str:
+    """ID estável (11 caracteres no YouTube) para chaves de objeto no R2."""
     m = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", source_url)
     if m:
         return m.group(1)
     return hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:32]
+
+
+def youtube_watch_canonical(source_url: str) -> str | None:
+    """URL canônica https://www.youtube.com/watch?v=ID para <guid> e <link>."""
+    m = re.search(r"(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})", source_url)
+    if m:
+        return f"https://www.youtube.com/watch?v={m.group(1)}"
+    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", source_url.strip()):
+        return f"https://www.youtube.com/watch?v={source_url.strip()}"
+    return None
+
+
+def episode_guid_and_link(source_url: str) -> tuple[str, str]:
+    """(guid, link) alinhados à URL do YouTube; fallback para URLs não-YouTube."""
+    c = youtube_watch_canonical(source_url)
+    if c:
+        return c, c
+    h = hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:32]
+    return h, source_url
+
+
+def normalize_guid_from_feed(raw: str) -> str:
+    """Compatível com episódios antigos cujo <guid> era só o ID de 11 caracteres."""
+    raw = raw.strip()
+    c = youtube_watch_canonical(raw)
+    if c:
+        return c
+    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", raw):
+        return f"https://www.youtube.com/watch?v={raw}"
+    return raw
 
 
 def r2_client():
@@ -96,7 +135,7 @@ def existing_guids(channel: ET.Element) -> set[str]:
     for item in channel.findall("item"):
         g = item.find("guid")
         if g is not None and g.text:
-            out.add(g.text.strip())
+            out.add(normalize_guid_from_feed(g.text))
     return out
 
 
@@ -121,6 +160,39 @@ def sync_public_urls(channel: ET.Element, base: str) -> None:
                 "type": "application/rss+xml",
             },
         )
+
+
+def sync_channel_metadata(channel: ET.Element, base: str) -> None:
+    """Metadados oficiais do podcast no <channel> (Spotify / Apple Podcasts)."""
+    def set_child(tag: str, text: str) -> None:
+        el = channel.find(tag)
+        if el is None:
+            el = ET.SubElement(channel, tag)
+        el.text = text
+
+    set_child("title", SHOW_TITLE)
+    set_child("description", SHOW_DESCRIPTION)
+    set_child("link", base)
+
+    au = channel.find(f"{{{ITUNES_NS}}}author")
+    if au is None:
+        au = ET.SubElement(channel, f"{{{ITUNES_NS}}}author")
+    au.text = SHOW_AUTHOR
+
+    ex = channel.find(f"{{{ITUNES_NS}}}explicit")
+    if ex is None:
+        ex = ET.SubElement(channel, f"{{{ITUNES_NS}}}explicit")
+    ex.text = "false"
+
+    for o in list(channel.findall(f"{{{ITUNES_NS}}}owner")):
+        channel.remove(o)
+    owner = ET.SubElement(channel, f"{{{ITUNES_NS}}}owner")
+    ET.SubElement(owner, f"{{{ITUNES_NS}}}name").text = OWNER_NAME
+    ET.SubElement(owner, f"{{{ITUNES_NS}}}email").text = OWNER_EMAIL
+
+    for c in list(channel.findall(f"{{{ITUNES_NS}}}category")):
+        channel.remove(c)
+    ET.SubElement(channel, f"{{{ITUNES_NS}}}category", {"text": ITUNES_CATEGORY})
 
 
 def format_pub_date() -> str:
@@ -400,6 +472,7 @@ def append_item(
     channel: ET.Element,
     *,
     guid: str,
+    episode_link: str,
     title: str,
     enclosure_url: str,
     length_bytes: int,
@@ -409,11 +482,14 @@ def append_item(
     item = ET.SubElement(channel, "item")
     t = ET.SubElement(item, "title")
     t.text = title
-    ET.SubElement(item, f"{{{ITUNES_NS}}}image", {"href": itunes_image_href})
-    g = ET.SubElement(item, "guid", {"isPermaLink": "false"})
+    lk = ET.SubElement(item, "link")
+    lk.text = episode_link
+    is_permalink = "true" if guid.startswith("http") else "false"
+    g = ET.SubElement(item, "guid", {"isPermaLink": is_permalink})
     g.text = guid
     pd = ET.SubElement(item, "pubDate")
     pd.text = pub_date if pub_date else format_pub_date()
+    ET.SubElement(item, f"{{{ITUNES_NS}}}image", {"href": itunes_image_href})
     ET.SubElement(
         item,
         "enclosure",
@@ -451,10 +527,11 @@ def process_one_episode(
     *,
     info: dict | None = None,
 ) -> None:
-    guid = stable_guid(source_url)
+    vid = youtube_video_id(source_url)
+    guid_str, link_str = episode_guid_and_link(source_url)
     if info is None:
         info = fetch_youtube_metadata(source_url)
-    episode_title = (info.get("fulltitle") or info.get("title") or "").strip() or f"Episódio {guid}"
+    episode_title = (info.get("fulltitle") or info.get("title") or "").strip() or f"Episódio {vid}"
     pub_date = pub_date_from_video_info(info)
     thumb_urls = ordered_thumbnail_urls(info)
     if not thumb_urls:
@@ -469,8 +546,8 @@ def process_one_episode(
         audio_path, _stem = download_audio(source_url, work)
         size = audio_path.stat().st_size
         ext = audio_path.suffix.lower().lstrip(".") or "mp3"
-        audio_key = f"episodes/{guid}.{ext}"
-        thumb_key = f"episodes/{guid}-thumb.{thumb_ext}"
+        audio_key = f"episodes/{vid}.{ext}"
+        thumb_key = f"episodes/{vid}-thumb.{thumb_ext}"
         a_ct = "audio/mpeg" if ext == "mp3" else "application/octet-stream"
         upload_file(client, bucket, audio_key, audio_path, a_ct)
         upload_file(client, bucket, thumb_key, thumb_path, thumb_ct)
@@ -479,7 +556,8 @@ def process_one_episode(
     public_thumb = f"{base}/{thumb_key}"
     append_item(
         channel,
-        guid=guid,
+        guid=guid_str,
+        episode_link=link_str,
         title=episode_title,
         enclosure_url=public_audio,
         length_bytes=size,
@@ -497,6 +575,7 @@ def main() -> None:
 
     tree, channel = parse_feed()
     sync_public_urls(channel, base)
+    sync_channel_metadata(channel, base)
     guids_done = existing_guids(channel)
 
     entries = fetch_playlist_entries(playlist_url)
@@ -511,8 +590,8 @@ def main() -> None:
     new_count = 0
     skipped = 0
     for url in urls:
-        guid = stable_guid(url)
-        if guid in guids_done:
+        episode_key, _ = episode_guid_and_link(url)
+        if episode_key in guids_done:
             continue
         try:
             info = fetch_youtube_metadata(url)
@@ -521,11 +600,11 @@ def main() -> None:
             raise
         skip, reason = should_skip_video(info)
         if skip:
-            print(f"Pulando {guid}: {reason}")
+            print(f"Pulando {episode_key}: {reason}")
             skipped += 1
             continue
         process_one_episode(url, channel, client, bucket, base, info=info)
-        guids_done.add(guid)
+        guids_done.add(episode_key)
         new_count += 1
 
     write_feed(tree)
