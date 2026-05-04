@@ -4,6 +4,8 @@ presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza
 Ignora lives/agendadas e VOD com idade inferior a MIN_VIDEO_AGE_SECONDS (padrão 3h).
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Cookies: cookies.txt na raiz ou YOUTUBE_COOKIES_PATH; no CI vem do secret YOUTUBE_COOKIES.
+Cliente YouTube: um único player_client (padrão android); YOUTUBE_PLAYER_CLIENT=web ou
+YTDLP_EXTRACTOR_ARGS para override completo.
 """
 from __future__ import annotations
 
@@ -27,7 +29,6 @@ ROOT = Path(__file__).resolve().parent
 FEED_PATH = ROOT / "feed.xml"
 ENV_FILE = ROOT / ".env"
 
-YT_EXTRACTOR_ARGS = "youtube:client=ios,tv,web"
 ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
 DEFAULT_MIN_VIDEO_AGE_SECONDS = 10800  # 3 horas
 # live_status do yt-dlp: ainda não é VOD estável para o feed
@@ -238,13 +239,72 @@ def _cookies_cli() -> list[str]:
     return []
 
 
+def _yt_extractor_args_string() -> str:
+    """Um único player_client (android ou web) por defeito; override completo via YTDLP_EXTRACTOR_ARGS."""
+    override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
+    if override:
+        return override
+    raw = (os.environ.get("YOUTUBE_PLAYER_CLIENT") or "android").strip().lower()
+    client = "web" if raw == "web" else "android"
+    return f"youtube:player_client={client}"
+
+
+def _sanitize_yt_dlp_cmd_for_log(cmd: list[str]) -> str:
+    """Comando para log: substitui o caminho após --cookies por placeholder."""
+    parts: list[str] = []
+    i = 0
+    while i < len(cmd):
+        if cmd[i] == "--cookies" and i + 1 < len(cmd):
+            parts.extend(["--cookies", "<cookies.txt>"])
+            i += 2
+        else:
+            parts.append(cmd[i])
+            i += 1
+    return " ".join(parts)
+
+
+def run_yt_dlp(cmd: list[str], *, capture_json: bool) -> subprocess.CompletedProcess[str]:
+    """
+    Executa yt-dlp; em falha imprime stderr/stdout no log (sem conteúdo de cookies).
+    capture_json=True mantém stdout para parse JSON; download usa False.
+    """
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if proc.returncode != 0:
+        print(
+            f"yt-dlp exit {proc.returncode}. Comando: {_sanitize_yt_dlp_cmd_for_log(cmd)}",
+            file=sys.stderr,
+        )
+        if capture_json or (proc.stdout and proc.stdout.strip()):
+            print("--- yt-dlp stdout ---", file=sys.stderr)
+            print(proc.stdout or "", file=sys.stderr, end="")
+            if proc.stdout and not proc.stdout.endswith("\n"):
+                print(file=sys.stderr)
+        print("--- yt-dlp stderr ---", file=sys.stderr)
+        print(proc.stderr or "", file=sys.stderr, end="")
+        if proc.stderr and not proc.stderr.endswith("\n"):
+            print(file=sys.stderr)
+        raise subprocess.CalledProcessError(
+            proc.returncode, cmd, output=proc.stdout, stderr=proc.stderr
+        )
+    return proc
+
+
 def _yt_dlp_common() -> list[str]:
-    """Prefixo yt-dlp + cookies + extractor-args (sem --no-playlist: necessário para listar playlist)."""
+    """Prefixo yt-dlp + rede + cookies + extractor-args (sem --no-playlist: necessário para listar playlist)."""
     return [
         "yt-dlp",
+        "--force-ipv4",
+        "--sleep-requests",
+        "5",
         *_cookies_cli(),
         "--extractor-args",
-        YT_EXTRACTOR_ARGS,
+        _yt_extractor_args_string(),
     ]
 
 
@@ -256,7 +316,7 @@ def _yt_dlp_single_video_cmd() -> list[str]:
 def fetch_playlist_entries(playlist_url: str) -> list[dict]:
     """Entradas da playlist (--flat-playlist), ordenadas por playlist_index crescente."""
     cmd = _yt_dlp_common() + ["--flat-playlist", "--dump-single-json", playlist_url]
-    proc = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+    proc = run_yt_dlp(cmd, capture_json=True)
     data = json.loads(proc.stdout)
     raw = [e for e in (data.get("entries") or []) if isinstance(e, dict) and e.get("id")]
 
@@ -276,7 +336,7 @@ def playlist_watch_urls(entries: list[dict]) -> list[str]:
 
 def fetch_youtube_metadata(source_url: str) -> dict:
     cmd = _yt_dlp_single_video_cmd() + ["--dump-single-json", source_url]
-    proc = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+    proc = run_yt_dlp(cmd, capture_json=True)
     return json.loads(proc.stdout)
 
 
@@ -451,7 +511,7 @@ def download_audio(source_url: str, work: Path) -> tuple[Path, str]:
         pattern,
         source_url,
     ]
-    subprocess.run(cmd, check=True)
+    run_yt_dlp(cmd, capture_json=False)
     audio_files = [
         p
         for p in work.iterdir()
@@ -593,11 +653,7 @@ def main() -> None:
         episode_key, _ = episode_guid_and_link(url)
         if episode_key in guids_done:
             continue
-        try:
-            info = fetch_youtube_metadata(url)
-        except subprocess.CalledProcessError as e:
-            print(f"Erro ao obter metadados de {url}: {e}", file=sys.stderr)
-            raise
+        info = fetch_youtube_metadata(url)
         skip, reason = should_skip_video(info)
         if skip:
             print(f"Pulando {episode_key}: {reason}")

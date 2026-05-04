@@ -63,11 +63,29 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `YOUTUBE_COOKIES` | Conteúdo completo de um `cookies.txt` no formato Netscape (exportado com o yt-dlp); o workflow grava `cookies.txt` antes de rodar o script. |
 | `MIN_VIDEO_AGE_SECONDS` | (Opcional) Segundos mínimos após a data de publicação conhecida antes de processar; padrão no código é **10800** (3h) se o secret estiver vazio. |
 
+**Variáveis de ambiente do runner (opcionais):** no repositório pode configurar-se *Actions secrets and variables* → *Variables* (não são sensíveis): `YOUTUBE_PLAYER_CLIENT` = `web` para forçar o cliente Web em vez do padrão **android**; `YTDLP_EXTRACTOR_ARGS` substitui por completo a string passada a `--extractor-args` (só se precisar de um perfil avançado do yt-dlp).
+
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
 
 ## Variáveis de ambiente (local)
 
 Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 e `YOUTUBE_PLAYLIST_URL` que o workflow injeta. Para o YouTube sem bloqueio de bot, coloque um `cookies.txt` (Netscape) na raiz do repositório ou defina `YOUTUBE_COOKIES_PATH` com o caminho absoluto do arquivo.
+
+- **`YOUTUBE_PLAYER_CLIENT`:** `android` (padrão) ou `web` — o script usa um único `player_client` do yt-dlp, o que costuma ser mais estável com ficheiros de cookies do que combinar vários clientes.
+- **`YTDLP_EXTRACTOR_ARGS`:** se definida, substitui inteiramente o valor de `--extractor-args` (ex.: `youtube:player_client=web,android` só se souber o que precisa).
+
+### Exportar cookies para o CI (recomendado)
+
+Seguindo a [wiki do yt-dlp — Exporting YouTube cookies](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies):
+
+1. Abra uma **janela anónima / incógnito**.
+2. Inicie sessão no YouTube com a conta que deve “assinar” os pedidos do bot.
+3. Na **mesma** janela, abra `https://www.youtube.com/robots.txt` (mantém a sessão estável para export).
+4. Com uma extensão ou ferramenta compatível com **Netscape cookies**, exporte cookies para **`youtube.com`**.
+5. Feche a janela anónima; não reutilize essa sessão para navegação diária.
+6. Cole o ficheiro completo no secret **`YOUTUBE_COOKIES`** (o workflow valida tamanho, domínio e presença de nomes típicos de cookie, **sem** imprimir o conteúdo nos logs).
+
+Evite exportar a partir de muitas abas normais do YouTube em paralelo — os cookies podem rodar e invalidar o ficheiro rapidamente.
 
 ## Rodar localmente
 

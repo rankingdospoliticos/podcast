@@ -40,15 +40,33 @@ jobs:
         run: |
           python <<'PY'
           import os
+          import re
           from pathlib import Path
 
           c = os.environ.get("YOUTUBE_COOKIES", "")
-          Path("cookies.txt").write_text(c, encoding="utf-8", newline="\n")
-          if Path("cookies.txt").stat().st_size < 32:
+          p = Path("cookies.txt")
+          p.write_text(c, encoding="utf-8", newline="\n")
+          if p.stat().st_size < 32:
               raise SystemExit(
                   "YOUTUBE_COOKIES ausente ou muito curto; "
                   "cole o conteúdo de cookies.txt (Netscape) no secret."
               )
+          text = p.read_text(encoding="utf-8", errors="replace")
+          if not re.search(r"youtube\.com", text, re.I):
+              raise SystemExit(
+                  "cookies.txt não contém linhas para youtube.com; "
+                  "exporte cookies do domínio YouTube (formato Netscape)."
+              )
+          if not re.search(
+              r"\b(SID|HSID|SSID|SAPISID|__Secure-1PSID|LOGIN_INFO)\b",
+              text,
+              re.I,
+          ):
+              raise SystemExit(
+                  "cookies.txt sem cookies típicos de sessão YouTube (ex.: SID, __Secure-1PSID). "
+                  "Refaça o export (recomendado: janela anónima + https://www.youtube.com/robots.txt)."
+              )
+          print("cookies.txt: tamanho OK, domínio youtube.com e nomes de cookie esperados.")
           PY
 
       - name: Run publisher
@@ -60,6 +78,8 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           YOUTUBE_PLAYLIST_URL: ${{ secrets.YOUTUBE_PLAYLIST_URL }}
           MIN_VIDEO_AGE_SECONDS: ${{ secrets.MIN_VIDEO_AGE_SECONDS }}
+          YOUTUBE_PLAYER_CLIENT: ${{ vars.YOUTUBE_PLAYER_CLIENT }}
+          YTDLP_EXTRACTOR_ARGS: ${{ vars.YTDLP_EXTRACTOR_ARGS }}
         run: |
           for attempt in 1 2 3; do
             echo "=== Tentativa ${attempt} de 3 ==="
