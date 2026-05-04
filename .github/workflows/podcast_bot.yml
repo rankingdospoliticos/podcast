@@ -78,7 +78,6 @@ jobs:
           R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
           YOUTUBE_PLAYLIST_URL: ${{ secrets.YOUTUBE_PLAYLIST_URL }}
           MIN_VIDEO_AGE_SECONDS: ${{ secrets.MIN_VIDEO_AGE_SECONDS }}
-          YOUTUBE_PLAYER_CLIENT: ${{ vars.YOUTUBE_PLAYER_CLIENT }}
           YTDLP_EXTRACTOR_ARGS: ${{ vars.YTDLP_EXTRACTOR_ARGS }}
         run: |
           for attempt in 1 2 3; do

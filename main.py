@@ -4,8 +4,9 @@ presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza
 Ignora lives/agendadas e VOD com idade inferior a MIN_VIDEO_AGE_SECONDS (padrão 3h).
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Cookies: cookies.txt na raiz ou YOUTUBE_COOKIES_PATH; no CI vem do secret YOUTUBE_COOKIES.
-Cliente YouTube: um único player_client (padrão android); YOUTUBE_PLAYER_CLIENT=web ou
-YTDLP_EXTRACTOR_ARGS para override completo.
+Por defeito não se passa --extractor-args ao YouTube (o yt-dlp escolhe clientes compatíveis
+com cookies; forçar android quebra: "Skipping client android since it does not support cookies").
+Opcional: YTDLP_EXTRACTOR_ARGS para --extractor-args manual (avançado).
 """
 from __future__ import annotations
 
@@ -239,14 +240,12 @@ def _cookies_cli() -> list[str]:
     return []
 
 
-def _yt_extractor_args_string() -> str:
-    """Um único player_client (android ou web) por defeito; override completo via YTDLP_EXTRACTOR_ARGS."""
+def _yt_extractor_args_cli() -> list[str]:
+    """Só adiciona --extractor-args se YTDLP_EXTRACTOR_ARGS estiver definido (evita android+cookies)."""
     override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if override:
-        return override
-    raw = (os.environ.get("YOUTUBE_PLAYER_CLIENT") or "android").strip().lower()
-    client = "web" if raw == "web" else "android"
-    return f"youtube:player_client={client}"
+        return ["--extractor-args", override]
+    return []
 
 
 def _sanitize_yt_dlp_cmd_for_log(cmd: list[str]) -> str:
@@ -296,15 +295,14 @@ def run_yt_dlp(cmd: list[str], *, capture_json: bool) -> subprocess.CompletedPro
 
 
 def _yt_dlp_common() -> list[str]:
-    """Prefixo yt-dlp + rede + cookies + extractor-args (sem --no-playlist: necessário para listar playlist)."""
+    """Prefixo yt-dlp + rede + cookies (+ extractor-args só se YTDLP_EXTRACTOR_ARGS). Sem --no-playlist."""
     return [
         "yt-dlp",
         "--force-ipv4",
         "--sleep-requests",
         "5",
         *_cookies_cli(),
-        "--extractor-args",
-        _yt_extractor_args_string(),
+        *_yt_extractor_args_cli(),
     ]
 
 

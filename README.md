@@ -63,7 +63,7 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `YOUTUBE_COOKIES` | Conteúdo completo de um `cookies.txt` no formato Netscape (exportado com o yt-dlp); o workflow grava `cookies.txt` antes de rodar o script. |
 | `MIN_VIDEO_AGE_SECONDS` | (Opcional) Segundos mínimos após a data de publicação conhecida antes de processar; padrão no código é **10800** (3h) se o secret estiver vazio. |
 
-**Variáveis de ambiente do runner (opcionais):** no repositório pode configurar-se *Actions secrets and variables* → *Variables* (não são sensíveis): `YOUTUBE_PLAYER_CLIENT` = `web` para forçar o cliente Web em vez do padrão **android**; `YTDLP_EXTRACTOR_ARGS` substitui por completo a string passada a `--extractor-args` (só se precisar de um perfil avançado do yt-dlp).
+**Variáveis de ambiente do runner (opcional):** em *Actions → Variables* pode definir-se `YTDLP_EXTRACTOR_ARGS` com o valor completo para `--extractor-args` do yt-dlp (só para cenários avançados). Por defeito o script **não** força `player_client`: com cookies, o yt-dlp usa clientes compatíveis (forçar `android` costuma falhar com “does not support cookies”).
 
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
 
@@ -71,8 +71,7 @@ Opcional para commit automático do feed no repo (já habilitado no workflow): n
 
 Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 e `YOUTUBE_PLAYLIST_URL` que o workflow injeta. Para o YouTube sem bloqueio de bot, coloque um `cookies.txt` (Netscape) na raiz do repositório ou defina `YOUTUBE_COOKIES_PATH` com o caminho absoluto do arquivo.
 
-- **`YOUTUBE_PLAYER_CLIENT`:** `android` (padrão) ou `web` — o script usa um único `player_client` do yt-dlp, o que costuma ser mais estável com ficheiros de cookies do que combinar vários clientes.
-- **`YTDLP_EXTRACTOR_ARGS`:** se definida, substitui inteiramente o valor de `--extractor-args` (ex.: `youtube:player_client=web,android` só se souber o que precisa).
+- **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env` local, o script passa `--extractor-args` com esse texto (ex.: `youtube:player_client=web` só se souber o que precisa). Sem esta variável, não se força cliente YouTube.
 
 ### Exportar cookies para o CI (recomendado)
 
