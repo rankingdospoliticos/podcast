@@ -2,9 +2,11 @@ name: Podcast bot
 
 on:
   workflow_dispatch:
-  schedule:
-    # Segundas 14:00 UTC (~11h BRT); ajuste o cron conforme a grade do podcast
-    - cron: "0 14 * * 1"
+    inputs:
+      youtube_url:
+        description: "URL do vídeo no YouTube (cole o link completo)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -32,11 +34,11 @@ jobs:
       - name: Run publisher
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          PODCAST_PUBLIC_BASE_URL: ${{ secrets.PODCAST_PUBLIC_BASE_URL }}
-          AUDIO_SOURCE_URL: ${{ secrets.AUDIO_SOURCE_URL }}
+          R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY }}
+          R2_SECRET_KEY: ${{ secrets.R2_SECRET_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          YOUTUBE_URL: ${{ inputs.youtube_url }}
         run: python main.py
 
       - name: Commit feed.xml if changed

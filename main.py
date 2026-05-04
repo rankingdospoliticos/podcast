@@ -1,6 +1,7 @@
 """
 Baixa áudio (yt-dlp), envia para R2, atualiza feed.xml sem duplicar <item> pelo mesmo guid.
-URLs públicas vêm de PODCAST_PUBLIC_BASE_URL (sem barra final).
+URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
+Fonte do vídeo: variável de ambiente YOUTUBE_URL (no Actions vem do workflow_dispatch).
 """
 from __future__ import annotations
 
@@ -56,8 +57,8 @@ def r2_client():
     return boto3.client(
         "s3",
         endpoint_url=endpoint,
-        aws_access_key_id=require_env("R2_ACCESS_KEY_ID"),
-        aws_secret_access_key=require_env("R2_SECRET_ACCESS_KEY"),
+        aws_access_key_id=require_env("R2_ACCESS_KEY"),
+        aws_secret_access_key=require_env("R2_SECRET_KEY"),
         region_name="auto",
         config=Config(signature_version="s3v4"),
     )
@@ -183,9 +184,9 @@ def upload_feed_to_r2(client, bucket: str) -> None:
 
 def main() -> None:
     load_dotenv_file()
-    bucket = require_env("R2_BUCKET")
-    base = require_env("PODCAST_PUBLIC_BASE_URL").rstrip("/")
-    source = require_env("AUDIO_SOURCE_URL")
+    bucket = require_env("R2_BUCKET_NAME")
+    base = require_env("R2_PUBLIC_URL").rstrip("/")
+    source = require_env("YOUTUBE_URL")
     guid = stable_guid(source)
 
     tree, channel = parse_feed()
@@ -199,9 +200,6 @@ def main() -> None:
         return
 
     client = r2_client()
-    object_key = ""
-    size = 0
-    stem = guid
 
     with tempfile.TemporaryDirectory() as td:
         work = Path(td)

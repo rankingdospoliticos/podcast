@@ -32,16 +32,17 @@ Confira no GitHub se a branch padrão é `main` ou `master` e ajuste o nome nos 
 
 ## Secrets do repositório (Settings → Secrets → Actions)
 
-Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá):
+Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá), alinhados ao que você já usa no servidor:
 
 | Secret | Descrição |
 |--------|-----------|
 | `R2_ACCOUNT_ID` | ID da conta Cloudflare (subdomínio do endpoint S3). |
-| `R2_ACCESS_KEY_ID` | Access Key ID do token R2. |
-| `R2_SECRET_ACCESS_KEY` | Secret do token R2. |
-| `R2_BUCKET` | Nome do bucket R2. |
-| `PODCAST_PUBLIC_BASE_URL` | URL pública estável do feed/arquivos (ex.: `https://podcast.seudominio.com` ou URL pública do bucket), **sem barra no final**. |
-| `AUDIO_SOURCE_URL` | URL da live/vídeo/áudio que o `yt-dlp` consegue baixar. |
+| `R2_ACCESS_KEY` | Access Key do token R2. |
+| `R2_SECRET_KEY` | Secret do token R2. |
+| `R2_BUCKET_NAME` | Nome do bucket R2. |
+| `R2_PUBLIC_URL` | URL pública estável do feed/arquivos (prefixo de `feed.xml` e de `episodes/…`), **sem barra no final**. |
+
+O link do YouTube **não** é secret: em **Actions → Podcast bot → Run workflow** preencha o campo obrigatório **youtube_url**; o workflow repassa para o `main.py` como `YOUTUBE_URL`.
 
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
 
