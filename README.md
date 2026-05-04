@@ -7,7 +7,7 @@ Baixa a fonte de áudio (ex.: live gravada), envia para o Cloudflare R2 (API S3)
 **Opção A (recomendada):** clonar o remoto e colar/copiar seus arquivos por cima.
 
 ```bash
-git clone https://github.com/rankingdopoliticos/podcast.git
+git clone https://github.com/rankingdospoliticos/podcast.git
 cd podcast
 # copie main.py, feed.xml, etc. para esta pasta
 git add .
@@ -21,9 +21,9 @@ git push origin main
 git init
 git add .
 git commit -m "Import inicial"
-git remote add origin https://github.com/rankingdopoliticos/podcast.git
+git remote add origin https://github.com/rankingdospoliticos/podcast.git
 git fetch origin
-git pull origin main --allow-unrelated-histories
+git pull origin main --no-edit --allow-unrelated-histories
 # resolva conflitos se aparecerem
 git push -u origin main
 ```
