@@ -41,6 +41,7 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `R2_SECRET_KEY` | Secret do token R2. |
 | `R2_BUCKET_NAME` | Nome do bucket R2. |
 | `R2_PUBLIC_URL` | URL pública estável do feed/arquivos (prefixo de `feed.xml` e de `episodes/…`), **sem barra no final**. |
+| `YOUTUBE_COOKIES` | Conteúdo completo de um `cookies.txt` no formato Netscape (exportado com o yt-dlp); o workflow grava `cookies.txt` antes de rodar o script. |
 
 O link do YouTube **não** é secret: em **Actions → Podcast bot → Run workflow** preencha o campo obrigatório **youtube_url**; o workflow repassa para o `main.py` como `YOUTUBE_URL`.
 
@@ -48,7 +49,7 @@ Opcional para commit automático do feed no repo (já habilitado no workflow): n
 
 ## Variáveis de ambiente (local)
 
-Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves que o workflow injeta.
+Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 que o workflow injeta. Para o YouTube sem bloqueio de bot, coloque um `cookies.txt` (Netscape) na raiz do repositório ou defina `YOUTUBE_COOKIES_PATH` com o caminho absoluto do arquivo.
 
 ## Rodar localmente
 

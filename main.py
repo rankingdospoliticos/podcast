@@ -2,6 +2,8 @@
 Baixa áudio (yt-dlp), miniatura e metadados do YouTube, envia para R2, atualiza feed.xml.
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Fonte do vídeo: variável de ambiente YOUTUBE_URL (no Actions vem do workflow_dispatch).
+Cookies opcionais: arquivo cookies.txt na raiz do projeto (gerado no CI a partir do secret YOUTUBE_COOKIES)
+ou caminho em YOUTUBE_COOKIES_PATH; repassado ao yt-dlp como --cookies.
 """
 from __future__ import annotations
 
@@ -115,9 +117,22 @@ def format_pub_date() -> str:
     return datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 
+def _cookies_cli() -> list[str]:
+    """Netscape cookies para o YouTube (--cookies), se o arquivo existir."""
+    raw = os.environ.get("YOUTUBE_COOKIES_PATH", "").strip()
+    path = Path(raw) if raw else (ROOT / "cookies.txt")
+    try:
+        if path.is_file() and path.stat().st_size > 0:
+            return ["--cookies", str(path.resolve())]
+    except OSError:
+        pass
+    return []
+
+
 def _yt_dlp_base_cmd() -> list[str]:
     return [
         "yt-dlp",
+        *_cookies_cli(),
         "--no-playlist",
         "--extractor-args",
         YT_EXTRACTOR_ARGS,
@@ -149,6 +164,18 @@ def ordered_thumbnail_urls(info: dict) -> list[str]:
         if isinstance(u, str) and u.startswith("http") and u not in seen:
             ordered.append(u)
             seen.add(u)
+
+    def prefer_raster(u: str) -> int:
+        ul = u.lower()
+        if ".jpg" in ul or ".jpeg" in ul or "image%2fjpeg" in ul:
+            return 3
+        if ".png" in ul or "image%2fpng" in ul:
+            return 2
+        if "webp" in ul:
+            return 0
+        return 1
+
+    ordered.sort(key=prefer_raster, reverse=True)
     return ordered
 
 

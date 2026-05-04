@@ -33,6 +33,23 @@ jobs:
           pip install -r requirements.txt
           pip install -U --pre yt-dlp
 
+      - name: Write YouTube cookies
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          python <<'PY'
+          import os
+          from pathlib import Path
+
+          c = os.environ.get("YOUTUBE_COOKIES", "")
+          Path("cookies.txt").write_text(c, encoding="utf-8", newline="\n")
+          if Path("cookies.txt").stat().st_size < 32:
+              raise SystemExit(
+                  "YOUTUBE_COOKIES ausente ou muito curto; "
+                  "cole o conteúdo de cookies.txt (Netscape) no secret."
+              )
+          PY
+
       - name: Run publisher
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
