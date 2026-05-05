@@ -42,7 +42,7 @@ jobs:
         run: |
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             Write-Host "=== Tentativa $attempt de 3 ==="
-            python main.py --cookies-from-browser chrome
+            python main.py
             if ($LASTEXITCODE -eq 0) { exit 0 }
             if ($attempt -lt 3) {
               Write-Host "Falhou; aguardando 15 min antes da próxima tentativa..."

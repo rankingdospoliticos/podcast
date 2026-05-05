@@ -12,13 +12,13 @@ Baixa vídeos da playlist YouTube **Feed RSS - Spotify** (URL configurada), gera
 
 ### Rodar agora (manual)
 
-Em **Actions → Podcast bot → Run workflow** (branch `main`): secrets R2, `YOUTUBE_PLAYLIST_URL`, e `python main.py --cookies-from-browser chrome` no runner **self-hosted** (sessão YouTube no Chrome da mesma máquina).
+Em **Actions → Podcast bot → Run workflow** (branch `main`): secrets R2, `YOUTUBE_PLAYLIST_URL`, e `python main.py` no runner **self-hosted**. Coloque um **`cookies.txt`** (Netscape) na pasta do job na máquina Windows (junto ao `main.py` após o checkout), ou defina **`YOUTUBE_COOKIES_PATH`** para o caminho absoluto desse ficheiro — o ficheiro não deve ir para o Git (está no `.gitignore`).
 
 **Limitação:** o atraso de 3h é calculado a partir dos metadados do vídeo no YouTube, **não** a partir do “momento em que o item entrou na playlist” (isso exigiria YouTube Data API). Na prática cobre “só depois que o VOD existe há tempo suficiente”.
 
 **GitHub:** com runner na sua máquina, o agendamento só corre quando o PC e o serviço do runner estão activos. O passo **Run publisher** tenta até **3 vezes** com **15 minutos** entre falhas.
 
-**YouTube / sessão:** não se usa o secret `YOUTUBE_COOKIES`. O workflow chama `python main.py --cookies-from-browser chrome`; o yt-dlp lê os cookies do perfil do Chrome neste Windows (esteja com sessão iniciada no YouTube no browser). Para **Edge**, altere o comando no [`podcast_bot.yml`](.github/workflows/podcast_bot.yml) para `--cookies-from-browser edge`.
+**YouTube / cookies:** o workflow chama `python main.py` sem `--cookies-from-browser` (evita bloqueio “database locked” do Chrome). Use **`cookies.txt`** local no workspace do runner ou variável de ambiente **`YOUTUBE_COOKIES_PATH`**. Opcionalmente pode executar à mão `python main.py --cookies-from-browser chrome` se o perfil do browser estiver acessível.
 
 Instale dependências Python completas do yt-dlp localmente (ex.: `pip install "yt-dlp[default]"`) e **Deno** ou **Node** conforme a [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS) se aparecer erro de desafio **n**.
 
@@ -64,7 +64,7 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `YOUTUBE_PLAYLIST_URL` | URL da playlist (ex.: `https://www.youtube.com/playlist?list=PL…`) da **Feed RSS - Spotify**. No YouTube: Biblioteca → playlist → partilhar → copiar link. |
 | `MIN_VIDEO_AGE_SECONDS` | (Opcional) Segundos mínimos após a data de publicação conhecida antes de processar; padrão no código é **10800** (3h) se o secret estiver vazio. |
 
-A autenticação YouTube no runner **self-hosted** usa **`--cookies-from-browser`** (Chrome/Edge no próprio PC), não o secret `YOUTUBE_COOKIES`.
+A autenticação YouTube no runner **self-hosted** usa normalmente um ficheiro **`cookies.txt`** no diretório do repositório (ou caminho em **`YOUTUBE_COOKIES_PATH`**). O secret **`YOUTUBE_COOKIES`** não é obrigatório neste fluxo.
 
 **Variáveis de ambiente do runner (opcional):** `YTDLP_EXTRACTOR_ARGS` substitui por completo o `--extractor-args`. Se **não** definir e existir cookies (ficheiro `cookies.txt` **ou** `--cookies-from-browser`), o `main.py` usa **`youtube:player_client=web`** por defeito.
 
@@ -76,8 +76,8 @@ Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2
 
 **Cookies YouTube (uma das opções):**
 
-- **Runner self-hosted / local com browser:** `python main.py --cookies-from-browser chrome` ou `edge` (mesma máquina com sessão YouTube no perfil do navegador; ver [FAQ yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)).
-- **Ficheiro Netscape:** coloque `cookies.txt` na raiz ou defina `YOUTUBE_COOKIES_PATH` (sem `--cookies-from-browser`, o script usa o ficheiro se existir).
+- **Ficheiro Netscape (recomendado no runner Windows):** coloque `cookies.txt` na pasta de trabalho do job (raiz do repo após checkout) ou defina `YOUTUBE_COOKIES_PATH`.
+- **Opcional — browser:** `python main.py --cookies-from-browser chrome` (se o perfil não estiver locked e o yt-dlp conseguir ler).
 
 - **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env`, substitui o `--extractor-args`. Sem isto, com cookies activos (browser ou ficheiro), o script usa `youtube:player_client=web` por defeito.
 
@@ -94,7 +94,7 @@ python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 pip install -U --pre "yt-dlp[default]"
-python main.py --cookies-from-browser chrome
+python main.py
 ```
 
 Para o YouTube resolver desafios JavaScript localmente, instale também um runtime suportado (ex.: **Deno ≥ 2** ou Node ≥ 20 com `--js-runtimes node` no yt-dlp); ver a [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
