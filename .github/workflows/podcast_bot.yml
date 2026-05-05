@@ -18,33 +18,22 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Cloudflare WARP
-        uses: fscarmen/warp-on-actions@v1.4
-        with:
-          stack: ipv4
-          mode: client
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install -U --pre "yt-dlp[default]"
+        shell: pwsh
+        run: python -m pip install -r requirements.txt
 
       - name: Write YouTube cookies
         env:
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        shell: pwsh
         run: |
-          python <<'PY'
+          @'
           import os
           import re
           from pathlib import Path
@@ -73,15 +62,7 @@ jobs:
                   "Refaça o export (recomendado: janela anónima + https://www.youtube.com/robots.txt)."
               )
           print("cookies.txt: tamanho OK, domínio youtube.com e nomes de cookie esperados.")
-          PY
-
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+          '@ | python -
 
       - name: Run publisher
         env:
@@ -93,27 +74,15 @@ jobs:
           YOUTUBE_PLAYLIST_URL: ${{ secrets.YOUTUBE_PLAYLIST_URL }}
           MIN_VIDEO_AGE_SECONDS: ${{ secrets.MIN_VIDEO_AGE_SECONDS }}
           YTDLP_EXTRACTOR_ARGS: ${{ vars.YTDLP_EXTRACTOR_ARGS }}
+        shell: pwsh
         run: |
-          for attempt in 1 2 3; do
-            echo "=== Tentativa ${attempt} de 3 ==="
-            if python main.py; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Falhou; aguardando 15 min antes da próxima tentativa..."
-              sleep 900
-            fi
-          done
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            Write-Host "=== Tentativa $attempt de 3 ==="
+            python main.py
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 3) {
+              Write-Host "Falhou; aguardando 15 min antes da próxima tentativa..."
+              Start-Sleep -Seconds 900
+            }
+          }
           exit 1
-
-      - name: Commit feed.xml if changed
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add feed.xml
-          if git diff --staged --quiet; then
-            echo "feed.xml inalterado no repositório"
-          else
-            git commit -m "chore: atualiza feed do podcast [skip ci]"
-            git push
-          fi
