@@ -25,13 +25,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
-        shell: pwsh
+        shell: powershell
         run: python -m pip install -r requirements.txt
 
       - name: Write YouTube cookies
         env:
           YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
-        shell: pwsh
+        shell: powershell
         run: |
           @'
           import os
@@ -74,7 +74,7 @@ jobs:
           YOUTUBE_PLAYLIST_URL: ${{ secrets.YOUTUBE_PLAYLIST_URL }}
           MIN_VIDEO_AGE_SECONDS: ${{ secrets.MIN_VIDEO_AGE_SECONDS }}
           YTDLP_EXTRACTOR_ARGS: ${{ vars.YTDLP_EXTRACTOR_ARGS }}
-        shell: pwsh
+        shell: powershell
         run: |
           for ($attempt = 1; $attempt -le 3; $attempt++) {
             Write-Host "=== Tentativa $attempt de 3 ==="
@@ -88,7 +88,7 @@ jobs:
           exit 1
 
       - name: Commit feed.xml if changed
-        shell: pwsh
+        shell: powershell
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
