@@ -3,12 +3,13 @@ Lê a playlist YouTube (secret YOUTUBE_PLAYLIST_URL), processa vídeos ainda nã
 presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza o RSS.
 Ignora lives/agendadas e VOD com idade inferior a MIN_VIDEO_AGE_SECONDS (padrão 3h).
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
-Cookies: cookies.txt na raiz ou YOUTUBE_COOKIES_PATH; no CI vem do secret YOUTUBE_COOKIES.
-Com cookies, usa-se por defeito youtube:player_client=web (compatível com cookies).
-YTDLP_EXTRACTOR_ARGS substitui esse default (avançado).
+Autenticação YouTube: ficheiro Netscape (cookies.txt / YOUTUBE_COOKIES_PATH) ou
+``python main.py --cookies-from-browser chrome|edge|...`` (yt-dlp lê a sessão do navegador).
+Com qualquer cookie activo, usa-se por defeito youtube:player_client=web (salvo YTDLP_EXTRACTOR_ARGS).
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -47,6 +48,30 @@ SHOW_AUTHOR = "Ranking dos Políticos"
 OWNER_NAME = "Ranking dos Políticos"
 OWNER_EMAIL = "comunicacao@politicos.org.br"
 ITUNES_CATEGORY = "Government"
+
+# Definido em main() via CLI: --cookies-from-browser (prioridade sobre cookies.txt)
+_COOKIES_FROM_BROWSER: str | None = None
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Podcast: playlist YouTube → R2 + feed.xml")
+    p.add_argument(
+        "--cookies-from-browser",
+        choices=(
+            "brave",
+            "chrome",
+            "chromium",
+            "edge",
+            "firefox",
+            "opera",
+            "safari",
+            "vivaldi",
+            "whale",
+        ),
+        default=None,
+        help="Repassa --cookies-from-browser ao yt-dlp (sessão local do navegador).",
+    )
+    return p.parse_args()
 
 
 def load_dotenv_file() -> None:
@@ -228,7 +253,9 @@ def pub_date_from_video_info(info: dict) -> str:
 
 
 def _cookies_cli() -> list[str]:
-    """Netscape cookies para o YouTube (--cookies), se o arquivo existir."""
+    """--cookies-from-browser (CLI) ou ficheiro Netscape (--cookies), se existir."""
+    if _COOKIES_FROM_BROWSER:
+        return ["--cookies-from-browser", _COOKIES_FROM_BROWSER]
     raw = os.environ.get("YOUTUBE_COOKIES_PATH", "").strip()
     path = Path(raw) if raw else (ROOT / "cookies.txt")
     try:
@@ -240,7 +267,7 @@ def _cookies_cli() -> list[str]:
 
 
 def _yt_extractor_args_cli() -> list[str]:
-    """YTDLP_EXTRACTOR_ARGS tem prioridade; com ficheiro de cookies usa web (suporta cookies)."""
+    """YTDLP_EXTRACTOR_ARGS tem prioridade; com cookies (ficheiro ou browser) usa web."""
     override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if override:
         return ["--extractor-args", override]
@@ -250,12 +277,15 @@ def _yt_extractor_args_cli() -> list[str]:
 
 
 def _sanitize_yt_dlp_cmd_for_log(cmd: list[str]) -> str:
-    """Comando para log: substitui o caminho após --cookies por placeholder."""
+    """Comando para log: anonymiza caminhos de cookies (não imprime segredos)."""
     parts: list[str] = []
     i = 0
     while i < len(cmd):
         if cmd[i] == "--cookies" and i + 1 < len(cmd):
             parts.extend(["--cookies", "<cookies.txt>"])
+            i += 2
+        elif cmd[i] == "--cookies-from-browser" and i + 1 < len(cmd):
+            parts.extend(["--cookies-from-browser", cmd[i + 1]])
             i += 2
         else:
             parts.append(cmd[i])
@@ -627,6 +657,9 @@ def process_one_episode(
 
 
 def main() -> None:
+    global _COOKIES_FROM_BROWSER
+    args = parse_args()
+    _COOKIES_FROM_BROWSER = args.cookies_from_browser
     load_dotenv_file()
     bucket = require_env("R2_BUCKET_NAME")
     base = require_env("R2_PUBLIC_URL").rstrip("/")

@@ -12,17 +12,15 @@ Baixa vídeos da playlist YouTube **Feed RSS - Spotify** (URL configurada), gera
 
 ### Rodar agora (manual)
 
-Em **Actions → Podcast bot → Run workflow** (branch `main`, sem inputs): o GitHub executa **o mesmo fluxo** do agendamento — cookies, secrets R2, `YOUTUBE_PLAYLIST_URL`, `python main.py`. Ou seja: **verifica na playlist o que ainda não entrou no feed**, aplica as mesmas regras (live / idade mínima) e **publica MP3 + capa + XML** para o que estiver faltando. Use quando o cron ainda não tiver corrido, tiver falhado, ou quiser forçar uma checagem imediata (sem esperar o próximo horário).
+Em **Actions → Podcast bot → Run workflow** (branch `main`): secrets R2, `YOUTUBE_PLAYLIST_URL`, e `python main.py --cookies-from-browser chrome` no runner **self-hosted** (sessão YouTube no Chrome da mesma máquina).
 
 **Limitação:** o atraso de 3h é calculado a partir dos metadados do vídeo no YouTube, **não** a partir do “momento em que o item entrou na playlist” (isso exigiria YouTube Data API). Na prática cobre “só depois que o VOD existe há tempo suficiente”.
 
-**GitHub:** execuções agendadas podem atrasar alguns minutos no plano gratuito. O passo **Run publisher** tenta até **3 vezes** com **15 minutos** entre falhas (rede / YouTube).
+**GitHub:** com runner na sua máquina, o agendamento só corre quando o PC e o serviço do runner estão activos. O passo **Run publisher** tenta até **3 vezes** com **15 minutos** entre falhas.
 
-**YouTube / EJS:** o yt-dlp instalado via `pip` precisa do extra **`[default]`** (inclui o pacote `yt-dlp-ejs` para desafios **n** / assinatura). O workflow instala `yt-dlp[default]` e **Deno 2.x** no `PATH` (recomendado na [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS)). Sem isso podem aparecer erros do tipo *n challenge solving failed* ou *Only images are available*.
+**YouTube / sessão:** não se usa o secret `YOUTUBE_COOKIES`. O workflow chama `python main.py --cookies-from-browser chrome`; o yt-dlp lê os cookies do perfil do Chrome neste Windows (esteja com sessão iniciada no YouTube no browser). Para **Edge**, altere o comando no [`podcast_bot.yml`](.github/workflows/podcast_bot.yml) para `--cookies-from-browser edge`.
 
-**YouTube / IP (WARP):** após o checkout, o workflow usa [fscarmen/warp-on-actions](https://github.com/fscarmen/warp-on-actions) (**Cloudflare WARP**, modo `client`, stack `ipv4`) para sair com outro endereço que o IP cru do runner — por vezes reduz *Sign in to confirm you're not a bot*; **não é garantia**. Se continuar a falhar: renove cookies ([export](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)), [PO Token](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) ou runner self-hosted.
-
-Muitos vídeos novos de uma vez podem deixar o job longo ou sujeito a limites do GitHub Actions / rate limit do YouTube.
+Instale dependências Python completas do yt-dlp localmente (ex.: `pip install "yt-dlp[default]"`) e **Deno** ou **Node** conforme a [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS) se aparecer erro de desafio **n**.
 
 ## Git: evitar históricos não relacionados
 
@@ -64,31 +62,30 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 | `R2_BUCKET_NAME` | Nome do bucket R2. |
 | `R2_PUBLIC_URL` | URL pública estável do feed/arquivos (prefixo de `feed.xml` e de `episodes/…`), **sem barra no final**. |
 | `YOUTUBE_PLAYLIST_URL` | URL da playlist (ex.: `https://www.youtube.com/playlist?list=PL…`) da **Feed RSS - Spotify**. No YouTube: Biblioteca → playlist → partilhar → copiar link. |
-| `YOUTUBE_COOKIES` | Conteúdo completo de um `cookies.txt` no formato Netscape (exportado com o yt-dlp); o workflow grava `cookies.txt` antes de rodar o script. |
 | `MIN_VIDEO_AGE_SECONDS` | (Opcional) Segundos mínimos após a data de publicação conhecida antes de processar; padrão no código é **10800** (3h) se o secret estiver vazio. |
 
-**Variáveis de ambiente do runner (opcional):** `YTDLP_EXTRACTOR_ARGS` substitui por completo o `--extractor-args`. Se **não** definir e existir ficheiro de cookies, o `main.py` usa **`youtube:player_client=web`** por defeito.
+A autenticação YouTube no runner **self-hosted** usa **`--cookies-from-browser`** (Chrome/Edge no próprio PC), não o secret `YOUTUBE_COOKIES`.
+
+**Variáveis de ambiente do runner (opcional):** `YTDLP_EXTRACTOR_ARGS` substitui por completo o `--extractor-args`. Se **não** definir e existir cookies (ficheiro `cookies.txt` **ou** `--cookies-from-browser`), o `main.py` usa **`youtube:player_client=web`** por defeito.
 
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
 
 ## Variáveis de ambiente (local)
 
-Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 e `YOUTUBE_PLAYLIST_URL` que o workflow injeta. Para o YouTube sem bloqueio de bot, coloque um `cookies.txt` (Netscape) na raiz do repositório ou defina `YOUTUBE_COOKIES_PATH` com o caminho absoluto do arquivo.
+Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2 e `YOUTUBE_PLAYLIST_URL` que o workflow injeta.
 
-- **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env`, substitui o `--extractor-args`. Sem isto, com `cookies.txt` / `YOUTUBE_COOKIES_PATH`, o script usa `youtube:player_client=web` por defeito.
+**Cookies YouTube (uma das opções):**
 
-### Exportar cookies para o CI (recomendado)
+- **Runner self-hosted / local com browser:** `python main.py --cookies-from-browser chrome` ou `edge` (mesma máquina com sessão YouTube no perfil do navegador; ver [FAQ yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)).
+- **Ficheiro Netscape:** coloque `cookies.txt` na raiz ou defina `YOUTUBE_COOKIES_PATH` (sem `--cookies-from-browser`, o script usa o ficheiro se existir).
 
-Seguindo a [wiki do yt-dlp — Exporting YouTube cookies](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies):
+- **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env`, substitui o `--extractor-args`. Sem isto, com cookies activos (browser ou ficheiro), o script usa `youtube:player_client=web` por defeito.
 
-1. Abra uma **janela anónima / incógnito**.
-2. Inicie sessão no YouTube com a conta que deve “assinar” os pedidos do bot.
-3. Na **mesma** janela, abra `https://www.youtube.com/robots.txt` (mantém a sessão estável para export).
-4. Com uma extensão ou ferramenta compatível com **Netscape cookies**, exporte cookies para **`youtube.com`**.
-5. Feche a janela anónima; não reutilize essa sessão para navegação diária.
-6. Cole o ficheiro completo no secret **`YOUTUBE_COOKIES`** (o workflow valida tamanho, domínio e presença de nomes típicos de cookie, **sem** imprimir o conteúdo nos logs).
+### Cookies exportados manualmente (alternativa ao browser)
 
-Evite exportar a partir de muitas abas normais do YouTube em paralelo — os cookies podem rodar e invalidar o ficheiro rapidamente.
+Seguindo a [wiki do yt-dlp — Exporting YouTube cookies](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies): janela anónima, login, abrir `https://www.youtube.com/robots.txt`, export Netscape para `youtube.com`, gravar como `cookies.txt` na pasta do projeto.
+
+Evite exportar a partir de muitas abas normais do YouTube em paralelo — os cookies podem rodar rapidamente.
 
 ## Rodar localmente
 
@@ -97,7 +94,7 @@ python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 pip install -U --pre "yt-dlp[default]"
-python main.py
+python main.py --cookies-from-browser chrome
 ```
 
 Para o YouTube resolver desafios JavaScript localmente, instale também um runtime suportado (ex.: **Deno ≥ 2** ou Node ≥ 20 com `--js-runtimes node` no yt-dlp); ver a [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
