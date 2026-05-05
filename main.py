@@ -6,7 +6,7 @@ URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Autenticação YouTube: ficheiro Netscape — variável **YOUTUBE_COOKIES_PATH** ou ``cookies.txt``
 na raiz do projecto; repassados ao yt-dlp como ``--cookies <caminho>``. Opcionalmente
 ``python main.py --cookies-from-browser ...`` (prioridade sobre o ficheiro).
-Com qualquer cookie activo, usa-se por defeito ``youtube:player_client=ios`` (salvo YTDLP_EXTRACTOR_ARGS).
+Com qualquer cookie activo, usa-se por defeito ``youtube:player_client=mweb,web`` (salvo YTDLP_EXTRACTOR_ARGS).
 O yt-dlp usa ``--user-agent`` fixo (Safari iOS) e já não passa ``--force-ipv4``.
 """
 from __future__ import annotations
@@ -262,6 +262,7 @@ def _cookies_cli() -> list[str]:
     """Repassa sessão ao yt-dlp: --cookies-from-browser (CLI) ou --cookies <ficheiro>.
 
     Com ficheiro: usa YOUTUBE_COOKIES_PATH se definido, senão ROOT/cookies.txt.
+    O caminho é sempre convertido para absoluto (``path.resolve()``), útil no Windows.
     """
     if _COOKIES_FROM_BROWSER:
         return ["--cookies-from-browser", _COOKIES_FROM_BROWSER]
@@ -276,12 +277,12 @@ def _cookies_cli() -> list[str]:
 
 
 def _yt_extractor_args_cli() -> list[str]:
-    """YTDLP_EXTRACTOR_ARGS tem prioridade; com cookies usa ios."""
+    """YTDLP_EXTRACTOR_ARGS tem prioridade; com cookies usa mweb,web."""
     override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if override:
         return ["--extractor-args", override]
     if _cookies_cli():
-        return ["--extractor-args", "youtube:player_client=ios"]
+        return ["--extractor-args", "youtube:player_client=mweb,web"]
     return []
 
 
@@ -335,7 +336,7 @@ def run_yt_dlp(cmd: list[str], *, capture_json: bool) -> subprocess.CompletedPro
 
 
 def _yt_dlp_common() -> list[str]:
-    """Prefixo yt-dlp + UA + rede + cookies + extractor-args (ios com cookies, salvo override). Sem --no-playlist."""
+    """Prefixo yt-dlp + UA iPhone + rede + cookies + extractor-args (mweb,web com cookies). Sem --no-playlist."""
     return [
         "yt-dlp",
         "--user-agent",
