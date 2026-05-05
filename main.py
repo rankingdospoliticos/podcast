@@ -3,8 +3,9 @@ Lê a playlist YouTube (secret YOUTUBE_PLAYLIST_URL), processa vídeos ainda nã
 presentes no feed.xml, baixa áudio + miniatura (yt-dlp), envia ao R2 e atualiza o RSS.
 Ignora lives/agendadas e VOD com idade inferior a MIN_VIDEO_AGE_SECONDS (padrão 3h).
 URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
-Autenticação YouTube: ficheiro Netscape (cookies.txt / YOUTUBE_COOKIES_PATH) ou
-``python main.py --cookies-from-browser chrome|edge|...`` (yt-dlp lê a sessão do navegador).
+Autenticação YouTube: ficheiro Netscape — variável **YOUTUBE_COOKIES_PATH** ou ``cookies.txt``
+na raiz do projecto; repassados ao yt-dlp como ``--cookies <caminho>``. Opcionalmente
+``python main.py --cookies-from-browser ...`` (prioridade sobre o ficheiro).
 Com qualquer cookie activo, usa-se por defeito youtube:player_client=web (salvo YTDLP_EXTRACTOR_ARGS).
 """
 from __future__ import annotations
@@ -253,7 +254,10 @@ def pub_date_from_video_info(info: dict) -> str:
 
 
 def _cookies_cli() -> list[str]:
-    """--cookies-from-browser (CLI) ou ficheiro Netscape (--cookies), se existir."""
+    """Repassa sessão ao yt-dlp: --cookies-from-browser (CLI) ou --cookies <ficheiro>.
+
+    Com ficheiro: usa YOUTUBE_COOKIES_PATH se definido, senão ROOT/cookies.txt.
+    """
     if _COOKIES_FROM_BROWSER:
         return ["--cookies-from-browser", _COOKIES_FROM_BROWSER]
     raw = os.environ.get("YOUTUBE_COOKIES_PATH", "").strip()
