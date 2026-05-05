@@ -38,6 +38,7 @@ jobs:
           YOUTUBE_PLAYLIST_URL: ${{ secrets.YOUTUBE_PLAYLIST_URL }}
           MIN_VIDEO_AGE_SECONDS: ${{ secrets.MIN_VIDEO_AGE_SECONDS }}
           YTDLP_EXTRACTOR_ARGS: ${{ vars.YTDLP_EXTRACTOR_ARGS }}
+          YOUTUBE_COOKIES_PATH: 'C:\Users\danta\actions-runner\_work\podcast\podcast\cookies.txt'
         shell: powershell
         run: |
           for ($attempt = 1; $attempt -le 3; $attempt++) {
