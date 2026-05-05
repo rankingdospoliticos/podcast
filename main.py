@@ -6,7 +6,7 @@ URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Autenticação YouTube: ficheiro Netscape — variável **YOUTUBE_COOKIES_PATH** ou ``cookies.txt``
 na raiz do projecto; repassados ao yt-dlp como ``--cookies <caminho>``. Opcionalmente
 ``python main.py --cookies-from-browser ...`` (prioridade sobre o ficheiro).
-Com qualquer cookie activo, usa-se por defeito youtube:player_client=web (salvo YTDLP_EXTRACTOR_ARGS).
+Com qualquer cookie activo, usa-se por defeito youtube:player_client=android,web (salvo YTDLP_EXTRACTOR_ARGS).
 """
 from __future__ import annotations
 
@@ -271,12 +271,12 @@ def _cookies_cli() -> list[str]:
 
 
 def _yt_extractor_args_cli() -> list[str]:
-    """YTDLP_EXTRACTOR_ARGS tem prioridade; com cookies (ficheiro ou browser) usa web."""
+    """YTDLP_EXTRACTOR_ARGS tem prioridade; com cookies (ficheiro ou browser) usa android,web."""
     override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if override:
         return ["--extractor-args", override]
     if _cookies_cli():
-        return ["--extractor-args", "youtube:player_client=web"]
+        return ["--extractor-args", "youtube:player_client=android,web"]
     return []
 
 
