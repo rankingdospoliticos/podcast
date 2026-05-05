@@ -6,7 +6,8 @@ URLs públicas vêm de R2_PUBLIC_URL (sem barra final).
 Autenticação YouTube: ficheiro Netscape — variável **YOUTUBE_COOKIES_PATH** ou ``cookies.txt``
 na raiz do projecto; repassados ao yt-dlp como ``--cookies <caminho>``. Opcionalmente
 ``python main.py --cookies-from-browser ...`` (prioridade sobre o ficheiro).
-Com qualquer cookie activo, usa-se por defeito youtube:player_client=android,web (salvo YTDLP_EXTRACTOR_ARGS).
+Com qualquer cookie activo, usa-se por defeito ``youtube:player_client=ios`` (salvo YTDLP_EXTRACTOR_ARGS).
+O yt-dlp usa ``--user-agent`` fixo (Safari iOS) e já não passa ``--force-ipv4``.
 """
 from __future__ import annotations
 
@@ -50,6 +51,10 @@ OWNER_NAME = "Ranking dos Políticos"
 OWNER_EMAIL = "comunicacao@politicos.org.br"
 ITUNES_CATEGORY = "Government"
 
+YT_DLP_USER_AGENT = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+)
 # Definido em main() via CLI: --cookies-from-browser (prioridade sobre cookies.txt)
 _COOKIES_FROM_BROWSER: str | None = None
 
@@ -271,12 +276,12 @@ def _cookies_cli() -> list[str]:
 
 
 def _yt_extractor_args_cli() -> list[str]:
-    """YTDLP_EXTRACTOR_ARGS tem prioridade; com cookies (ficheiro ou browser) usa android,web."""
+    """YTDLP_EXTRACTOR_ARGS tem prioridade; com cookies usa ios."""
     override = os.environ.get("YTDLP_EXTRACTOR_ARGS", "").strip()
     if override:
         return ["--extractor-args", override]
     if _cookies_cli():
-        return ["--extractor-args", "youtube:player_client=android,web"]
+        return ["--extractor-args", "youtube:player_client=ios"]
     return []
 
 
@@ -330,10 +335,11 @@ def run_yt_dlp(cmd: list[str], *, capture_json: bool) -> subprocess.CompletedPro
 
 
 def _yt_dlp_common() -> list[str]:
-    """Prefixo yt-dlp + rede + cookies + extractor-args (web quando há cookies, salvo override). Sem --no-playlist."""
+    """Prefixo yt-dlp + UA + rede + cookies + extractor-args (ios com cookies, salvo override). Sem --no-playlist."""
     return [
         "yt-dlp",
-        "--force-ipv4",
+        "--user-agent",
+        YT_DLP_USER_AGENT,
         "--sleep-requests",
         "5",
         *_cookies_cli(),
