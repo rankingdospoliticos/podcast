@@ -66,9 +66,43 @@ Não commite credenciais. Configure estes nomes no GitHub (valores reais só lá
 
 A autenticação YouTube no runner **self-hosted** usa normalmente um ficheiro **`cookies.txt`** no diretório do repositório (ou caminho em **`YOUTUBE_COOKIES_PATH`**). O secret **`YOUTUBE_COOKIES`** não é obrigatório neste fluxo.
 
-**Variáveis de ambiente do runner (opcional):** `YTDLP_EXTRACTOR_ARGS` substitui por completo o `--extractor-args`. Se **não** definir e existir cookies (ficheiro `cookies.txt` **ou** `--cookies-from-browser`), o `main.py` usa **`youtube:player_client=web`** por defeito.
+**Variáveis de ambiente do runner (opcional):** `YTDLP_EXTRACTOR_ARGS` substitui por completo o `--extractor-args`. Se **não** definir e existir cookies (ficheiro ou `--cookies-from-browser`), o `main.py` usa **`youtube:player_client=mweb,web`** por defeito.
 
 Opcional para commit automático do feed no repo (já habilitado no workflow): não é necessário secret extra — usa `GITHUB_TOKEN`.
+
+## Diagnóstico yt-dlp (403, API 400, ios no log)
+
+Um teste no **CMD** só com `yt-dlp -x …` **não** reproduz o [`main.py`](main.py): falta `--cookies`, `--extractor-args`, `--user-agent`. O YouTube **não** aceita `--username` / `--password`; use sempre cookies ([FAQ](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp)).
+
+### Teste manual equivalente ao comando interno
+
+No mesmo Windows onde corre o runner, com **URL completa** do vídeo (`watch?v=…`) e caminho **absoluto** ao `cookies.txt` Netscape:
+
+```powershell
+yt-dlp --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1" `
+  --sleep-requests 5 `
+  --cookies "C:\Users\danta\actions-runner\cookies.txt" `
+  --extractor-args "youtube:player_client=mweb,web" `
+  --no-playlist -x --audio-format mp3 "https://www.youtube.com/watch?v=COLAR_ID_AQUI"
+```
+
+Confira o **ID de 11 caracteres**: não confunda a letra **O** com o número **0** (ex.: `NA_O05goVAg` vs `NA_0O5goVAg`).
+
+### Ambiente e EJS
+
+- Mantenha `python -m pip install -U "yt-dlp[default]"` (pacote **yt-dlp-ejs** para desafios **n**). O workflow já executa este upgrade após `requirements.txt`.
+- Se aparecer erro de **n challenge / EJS**, instale um runtime JS (**Deno ≥ 2** ou **Node ≥ 20**) conforme a [wiki EJS](https://github.com/yt-dlp/yt-dlp/wiki/EJS).
+
+### Cookies e runner Windows
+
+- **`YOUTUBE_COOKIES_PATH`** no workflow aponta para um ficheiro **fora** do `_work` do checkout (ex.: `C:\Users\...\actions-runner\cookies.txt`).
+- O **serviço do runner** deve conseguir **ler** esse ficheiro (mesma conta ou permissões NTFS). Se `python main.py` falhar mas o comando manual no seu utilizador funcionar, é tipicamente **conta/permissões**.
+
+### Se ainda houver 403 ou bloqueio
+
+1. Variável **`YTDLP_EXTRACTOR_ARGS`** (repo ou `.env`) para experimentar outro `player_client`.
+2. [PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) quando cookies + cliente não bastam.
+3. Os logs do `main.py` já imprimem **stderr** completo do yt-dlp em falha (`run_yt_dlp`).
 
 ## Variáveis de ambiente (local)
 
@@ -79,7 +113,7 @@ Copie `.env.example` para `.env` e preencha. O `main.py` lê as mesmas chaves R2
 - **Ficheiro Netscape (recomendado no runner Windows):** coloque `cookies.txt` na pasta de trabalho do job (raiz do repo após checkout) ou defina `YOUTUBE_COOKIES_PATH`.
 - **Opcional — browser:** `python main.py --cookies-from-browser chrome` (se o perfil não estiver locked e o yt-dlp conseguir ler).
 
-- **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env`, substitui o `--extractor-args`. Sem isto, com cookies activos (browser ou ficheiro), o script usa `youtube:player_client=web` por defeito.
+- **`YTDLP_EXTRACTOR_ARGS`:** se definida no `.env`, substitui o `--extractor-args`. Sem isto, com cookies activos, o script usa **`youtube:player_client=mweb,web`** por defeito.
 
 ### Cookies exportados manualmente (alternativa ao browser)
 
@@ -93,7 +127,7 @@ Evite exportar a partir de muitas abas normais do YouTube em paralelo — os coo
 python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-pip install -U --pre "yt-dlp[default]"
+python -m pip install -U "yt-dlp[default]"
 python main.py
 ```
 
